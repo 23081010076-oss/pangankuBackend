@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -25,11 +26,28 @@ func NewHargaHandler(db *gorm.DB, rdb *redis.Client) *HargaHandler {
 	return &HargaHandler{db: db, rdb: rdb}
 }
 
+// FlexibleDate menerima format "2006-01-02" maupun RFC3339
+type FlexibleDate struct{ time.Time }
+
+func (f *FlexibleDate) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if len(s) >= 2 {
+		s = s[1 : len(s)-1] // hapus tanda kutip
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			f.Time = t
+			return nil
+		}
+	}
+	return errors.New("format tanggal tidak valid, gunakan YYYY-MM-DD atau RFC3339")
+}
+
 type CreateHargaRequest struct {
-	KomoditasID string    `json:"komoditas_id" binding:"required,uuid"`
-	KecamatanID string    `json:"kecamatan_id" binding:"required,uuid"`
-	HargaPerKg  float64   `json:"harga_per_kg" binding:"required,gt=0"`
-	Tanggal     time.Time `json:"tanggal" binding:"required"`
+	KomoditasID string       `json:"komoditas_id" binding:"required,uuid"`
+	KecamatanID string       `json:"kecamatan_id" binding:"required,uuid"`
+	HargaPerKg  float64      `json:"harga_per_kg" binding:"required,gt=0"`
+	Tanggal     FlexibleDate `json:"tanggal" binding:"required"`
 }
 
 type HargaLatest struct {
@@ -176,6 +194,18 @@ func (h *HargaHandler) GetTrend(c *gin.Context) {
 	kecamatanID := c.Query("kecamatan_id")
 	periode := c.DefaultQuery("periode", "7d")
 
+	// Validasi UUID
+	if _, err := uuid.Parse(komoditasID); err != nil {
+		c.JSON(400, gin.H{"error": "Format komoditas_id tidak valid"})
+		return
+	}
+	if kecamatanID != "" {
+		if _, err := uuid.Parse(kecamatanID); err != nil {
+			c.JSON(400, gin.H{"error": "Format kecamatan_id tidak valid"})
+			return
+		}
+	}
+
 	// Hitung tanggal mulai
 	days := 7
 	switch periode {
@@ -237,7 +267,7 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 	}
 
 	// Validasi tanggal tidak di masa depan
-	if req.Tanggal.After(time.Now()) {
+	if req.Tanggal.Time.After(time.Now()) {
 		c.JSON(400, gin.H{"error": "Tanggal tidak boleh di masa depan"})
 		return
 	}
@@ -261,7 +291,7 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 		KomoditasID: uuid.MustParse(req.KomoditasID),
 		KecamatanID: uuid.MustParse(req.KecamatanID),
 		HargaPerKg:  req.HargaPerKg,
-		Tanggal:     req.Tanggal,
+		Tanggal:     req.Tanggal.Time,
 		CreatedBy:   createdBy,
 	}
 

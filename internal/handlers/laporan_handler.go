@@ -70,7 +70,7 @@ func (h *LaporanHandler) GetLaporan(c *gin.Context) {
 	query.Count(&total)
 
 	var laporanList []models.LaporanDarurat
-	query.Offset((page-1)*limit).Limit(limit).Order("created_at desc").Find(&laporanList)
+	query.Offset((page - 1) * limit).Limit(limit).Order("created_at desc").Find(&laporanList)
 
 	// Dekripsi deskripsi sebelum dikembalikan
 	for i := range laporanList {
@@ -188,6 +188,12 @@ func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 
 // UpdateLaporanStatus - PUT /api/v1/laporan/:id/status
 func (h *LaporanHandler) UpdateLaporanStatus(c *gin.Context) {
+	role := middleware.GetRole(c)
+	if role != "admin" && role != "petugas" {
+		c.JSON(403, gin.H{"error": "Akses ditolak"})
+		return
+	}
+
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
 		c.JSON(400, gin.H{"error": "ID tidak valid"})
@@ -238,10 +244,34 @@ func (h *LaporanHandler) DeleteLaporan(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&models.LaporanDarurat{}, "id = ?", id).Error; err != nil {
+	role := middleware.GetRole(c)
+	userID := middleware.GetUserID(c)
+
+	query := h.db.Where("id = ?", id)
+	if role != "admin" && role != "petugas" {
+		query = query.Where("pelapor_id = ?", userID)
+	}
+
+	result := query.Delete(&models.LaporanDarurat{})
+	if result.Error != nil {
 		c.JSON(500, gin.H{"error": "Gagal menghapus laporan"})
 		return
 	}
+	if result.RowsAffected == 0 {
+		c.JSON(404, gin.H{"error": "Laporan tidak ditemukan"})
+		return
+	}
+
+	go func() {
+		if uid, err := uuid.Parse(userID); err == nil {
+			h.db.Create(&models.AuditLog{
+				UserID:    uid,
+				Action:    "DELETE",
+				Resource:  "laporan_darurat:" + id,
+				IPAddress: c.ClientIP(),
+			})
+		}
+	}()
 
 	c.JSON(200, gin.H{"message": "Laporan berhasil dihapus"})
 }

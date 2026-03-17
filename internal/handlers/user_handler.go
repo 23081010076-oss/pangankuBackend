@@ -211,7 +211,7 @@ func (h *UserHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	validRoles := map[string]bool{"admin": true, "petugas": true, "petani": true, "publik": true}
+	validRoles := map[string]bool{"admin": true, "petugas": true, "petani": true, "pedagang": true, "publik": true}
 	if !validRoles[req.Role] {
 		c.JSON(400, gin.H{"error": "Role tidak valid"})
 		return

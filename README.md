@@ -85,6 +85,22 @@ Ini akan menjalankan:
 - `GET /api/v1/harga/forecast` - Prediksi harga 7 hari ke depan
 - `POST /api/v1/harga` - Tambah data harga (admin/petugas only)
 
+### WhatsApp Input
+
+- `GET /api/v1/whatsapp/help` - Cek status konfigurasi & format pesan WA
+- `GET /api/v1/whatsapp/webhook` - Verifikasi webhook WhatsApp Cloud API
+- `POST /api/v1/whatsapp/webhook` - Terima pesan WhatsApp untuk input data
+
+Format pesan WhatsApp:
+
+- `LAPOR#kecamatan_id#jenis_masalah#deskripsi#prioritas`
+- `HARGA#komoditas_id#kecamatan_id#harga_per_kg#YYYY-MM-DD`
+
+Contoh:
+
+- `LAPOR#d8f2b4a9-7abc-4c07-9d27-6a1a78f77d55#Kekurangan Beras#Stok menipis 2 hari terakhir#4`
+- `HARGA#8c154040-3bb2-4971-ac9c-1b985e7d6d4f#d8f2b4a9-7abc-4c07-9d27-6a1a78f77d55#13500#2026-03-17`
+
 ### Upload
 
 - `POST /api/v1/upload/foto` - Upload foto (JPG/PNG/WebP, max 5MB)

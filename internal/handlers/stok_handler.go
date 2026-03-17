@@ -73,8 +73,8 @@ func (h *StokHandler) GetStok(c *gin.Context) {
 	// Filter by status (aman/waspada/kritis) setelah query karena status dihitung
 	type StokResponse struct {
 		models.StokPangan
-		StatusStok  string  `json:"status_stok"`
-		StokPersen  float64 `json:"stok_persen"`
+		StatusStok string  `json:"status_stok"`
+		StokPersen float64 `json:"stok_persen"`
 	}
 
 	var hasil []StokResponse
@@ -154,7 +154,7 @@ func (h *StokHandler) GetStokByKecamatan(c *gin.Context) {
 func (h *StokHandler) CreateOrUpdateStok(c *gin.Context) {
 	var req StokRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Data tidak valid: "+err.Error()})
+		c.JSON(400, gin.H{"error": "Data tidak valid: " + err.Error()})
 		return
 	}
 
@@ -228,4 +228,37 @@ func (h *StokHandler) CreateOrUpdateStok(c *gin.Context) {
 func (h *StokHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/stok", h.GetStok)
 	r.GET("/stok/kecamatan/:id", h.GetStokByKecamatan)
+}
+
+// DeleteStok - DELETE /api/v1/stok/:id
+func (h *StokHandler) DeleteStok(c *gin.Context) {
+	id := c.Param("id")
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(400, gin.H{"error": "ID tidak valid"})
+		return
+	}
+
+	var stok models.StokPangan
+	if err := h.db.First(&stok, "id = ?", id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "Data stok tidak ditemukan"})
+		return
+	}
+
+	if err := h.db.Delete(&models.StokPangan{}, "id = ?", id).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal menghapus data stok"})
+		return
+	}
+
+	go func() {
+		if uid, err := uuid.Parse(middleware.GetUserID(c)); err == nil {
+			h.db.Create(&models.AuditLog{
+				UserID:    uid,
+				Action:    "DELETE",
+				Resource:  c.FullPath(),
+				IPAddress: c.ClientIP(),
+			})
+		}
+	}()
+
+	c.JSON(200, gin.H{"message": "Data stok berhasil dihapus"})
 }

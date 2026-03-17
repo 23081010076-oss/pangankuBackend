@@ -50,10 +50,17 @@ type CreateHargaRequest struct {
 	Tanggal     FlexibleDate `json:"tanggal" binding:"required"`
 }
 
+type UpdateHargaRequest struct {
+	HargaPerKg float64      `json:"harga_per_kg" binding:"required,gt=0"`
+	Tanggal    FlexibleDate `json:"tanggal" binding:"required"`
+}
+
 type HargaLatest struct {
 	ID            uuid.UUID `json:"id"`
 	KomoditasID   uuid.UUID `json:"komoditas_id"`
 	KomoditasNama string    `json:"komoditas_nama"`
+	KecamatanID   uuid.UUID `json:"kecamatan_id"`
+	KecamatanNama string    `json:"kecamatan_nama"`
 	HargaPerKg    float64   `json:"harga_per_kg"`
 	Tanggal       time.Time `json:"tanggal"`
 	PerubahanPct  float64   `json:"perubahan_persen"`
@@ -137,6 +144,8 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 		ID            uuid.UUID
 		KomoditasID   uuid.UUID
 		KomoditasNama string
+		KecamatanID   uuid.UUID
+		KecamatanNama string
 		HargaPerKg    float64
 		Tanggal       time.Time
 	}
@@ -144,9 +153,11 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 	h.db.Raw(`
 		SELECT DISTINCT ON (h.komoditas_id) 
 			h.id, h.komoditas_id, k.nama as komoditas_nama, 
+			h.kecamatan_id, kc.nama as kecamatan_nama,
 			h.harga_per_kg, h.tanggal
 		FROM harga_pasars h
 		JOIN komoditas k ON k.id = h.komoditas_id
+		JOIN kecamatans kc ON kc.id = h.kecamatan_id
 		ORDER BY h.komoditas_id, h.tanggal DESC
 	`).Scan(&rows)
 
@@ -173,6 +184,8 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			ID:            row.ID,
 			KomoditasID:   row.KomoditasID,
 			KomoditasNama: row.KomoditasNama,
+			KecamatanID:   row.KecamatanID,
+			KecamatanNama: row.KecamatanNama,
 			HargaPerKg:    row.HargaPerKg,
 			Tanggal:       row.Tanggal,
 			PerubahanPct:  perubahan,
@@ -324,6 +337,106 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 	c.JSON(201, gin.H{"data": harga})
 }
 
+// UpdateHarga - PUT /api/v1/harga/:id
+func (h *HargaHandler) UpdateHarga(c *gin.Context) {
+	id := c.Param("id")
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(400, gin.H{"error": "ID tidak valid"})
+		return
+	}
+
+	var req UpdateHargaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Data tidak valid"})
+		return
+	}
+
+	if req.Tanggal.Time.After(time.Now()) {
+		c.JSON(400, gin.H{"error": "Tanggal tidak boleh di masa depan"})
+		return
+	}
+
+	var harga models.HargaPasar
+	if err := h.db.First(&harga, "id = ?", id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "Data harga tidak ditemukan"})
+		return
+	}
+
+	// Pedagang/petani hanya boleh mengubah data harga miliknya sendiri.
+	role := middleware.GetRole(c)
+	if role == "pedagang" || role == "petani" {
+		uid, err := uuid.Parse(middleware.GetUserID(c))
+		if err != nil {
+			c.JSON(401, gin.H{"error": "User tidak valid"})
+			return
+		}
+		if harga.CreatedBy != uid {
+			c.JSON(403, gin.H{"error": "Akses ditolak"})
+			return
+		}
+	}
+
+	h.db.Model(&harga).Updates(map[string]interface{}{
+		"harga_per_kg": req.HargaPerKg,
+		"tanggal":      req.Tanggal.Time,
+	})
+
+	ctx := context.Background()
+	h.rdb.Del(ctx, "harga:latest")
+	h.rdb.Del(ctx, fmt.Sprintf("harga:trend:%s:*", harga.KomoditasID.String()))
+
+	go func() {
+		if uid, err := uuid.Parse(middleware.GetUserID(c)); err == nil {
+			h.db.Create(&models.AuditLog{
+				UserID:    uid,
+				Action:    "UPDATE",
+				Resource:  c.FullPath(),
+				IPAddress: c.ClientIP(),
+			})
+		}
+	}()
+
+	h.db.Preload("Komoditas").Preload("Kecamatan").First(&harga, "id = ?", id)
+	c.JSON(200, gin.H{"data": harga})
+}
+
+// DeleteHarga - DELETE /api/v1/harga/:id
+func (h *HargaHandler) DeleteHarga(c *gin.Context) {
+	id := c.Param("id")
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(400, gin.H{"error": "ID tidak valid"})
+		return
+	}
+
+	var harga models.HargaPasar
+	if err := h.db.First(&harga, "id = ?", id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "Data harga tidak ditemukan"})
+		return
+	}
+
+	if err := h.db.Delete(&models.HargaPasar{}, "id = ?", id).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal menghapus data harga"})
+		return
+	}
+
+	ctx := context.Background()
+	h.rdb.Del(ctx, "harga:latest")
+	h.rdb.Del(ctx, fmt.Sprintf("harga:trend:%s:*", harga.KomoditasID.String()))
+
+	go func() {
+		if uid, err := uuid.Parse(middleware.GetUserID(c)); err == nil {
+			h.db.Create(&models.AuditLog{
+				UserID:    uid,
+				Action:    "DELETE",
+				Resource:  c.FullPath(),
+				IPAddress: c.ClientIP(),
+			})
+		}
+	}()
+
+	c.JSON(200, gin.H{"message": "Data harga berhasil dihapus"})
+}
+
 // GetForecast - GET /api/v1/harga/forecast
 func (h *HargaHandler) GetForecast(c *gin.Context) {
 	komoditasID := c.Query("komoditas_id")
@@ -350,7 +463,7 @@ func (h *HargaHandler) GetForecast(c *gin.Context) {
 	// Ambil data 90 hari terakhir
 	query := h.db.Model(&models.HargaPasar{}).
 		Where("komoditas_id = ? AND tanggal >= ?", komoditasID, time.Now().AddDate(0, 0, -90))
-	
+
 	if kecamatanID != "" {
 		query = query.Where("kecamatan_id = ?", kecamatanID)
 	}
@@ -398,7 +511,7 @@ func (h *HargaHandler) checkAnomalyAndNotify(komoditasID, kecamatanID string, ha
 	if hargaBaru > avg*1.2 || hargaBaru < avg*0.8 {
 		message := fmt.Sprintf("Harga %s di %s anomali: Rp%.0f (rata-rata 7 hari: Rp%.0f)",
 			namaKomoditas, namaKecamatan, hargaBaru, avg)
-		
+
 		// TODO: Simpan ke tabel notifikasi
 		// Sementara hanya log
 		fmt.Println("ALERT:", message)
@@ -413,6 +526,8 @@ func (h *HargaHandler) RegisterRoutes(r *gin.RouterGroup) {
 		harga.GET("/latest", h.GetLatest)
 		harga.GET("/trend/:komoditas_id", h.GetTrend)
 		harga.GET("/forecast", h.GetForecast)
-		harga.POST("", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas"), h.CreateHarga)
+		harga.POST("", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani", "pedagang"), h.CreateHarga)
+		harga.PUT("/:id", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani", "pedagang"), h.UpdateHarga)
+		harga.DELETE("/:id", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas"), h.DeleteHarga)
 	}
 }

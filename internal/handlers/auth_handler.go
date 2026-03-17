@@ -1,4 +1,4 @@
- package handlers
+package handlers
 
 import (
 	"context"
@@ -28,6 +28,7 @@ type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 	Phone    string `json:"phone"`
+	Role     string `json:"role"`
 }
 
 type LoginRequest struct {
@@ -62,12 +63,22 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Buat user baru
+	role := req.Role
+	if role == "" {
+		role = "publik"
+	}
+	allowedRoles := map[string]bool{"publik": true, "petani": true, "pedagang": true}
+	if !allowedRoles[role] {
+		c.JSON(400, gin.H{"error": "Role tidak valid"})
+		return
+	}
+
 	user := models.User{
 		Name:     req.Name,
 		Email:    req.Email,
 		Password: hashedPassword,
 		Phone:    req.Phone,
-		Role:     "publik",
+		Role:     role,
 		IsActive: true,
 	}
 

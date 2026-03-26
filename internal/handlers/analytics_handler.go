@@ -12,13 +12,41 @@ type AnalyticsHandler struct {
 	db *gorm.DB
 }
 
+type activeAlertItem struct {
+	ID            string    `json:"id"`
+	JenisMasalah  string    `json:"jenis_masalah"`
+	KecamatanNama string    `json:"kecamatan_nama"`
+	Status        string    `json:"status"`
+	Prioritas     int       `json:"prioritas"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 func NewAnalyticsHandler(db *gorm.DB) *AnalyticsHandler {
 	return &AnalyticsHandler{db: db}
 }
 
 // GetDashboard - GET /api/v1/analytics/dashboard
 func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
+	periode := c.DefaultQuery("periode", "7d")
+	days := 7
+	switch periode {
+	case "30d":
+		days = 30
+	case "90d":
+		days = 90
+	default:
+		periode = "7d"
+	}
+
 	today := time.Now().Truncate(24 * time.Hour)
+
+	var latestHargaDate time.Time
+	h.db.Raw("SELECT COALESCE(MAX(tanggal), NOW()) FROM harga_pasars").Scan(&latestHargaDate)
+	if latestHargaDate.IsZero() {
+		latestHargaDate = today
+	}
+
+	rangeStart := latestHargaDate.AddDate(0, 0, -(days - 1))
 
 	var totalKomoditas int64
 	h.db.Model(&models.Komoditas{}).Count(&totalKomoditas)
@@ -28,6 +56,15 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 	h.db.Model(&models.LaporanDarurat{}).
 		Where("status IN ?", []string{"baru", "proses"}).
 		Count(&alertCount)
+
+	var activeAlerts []activeAlertItem
+	h.db.Table("laporan_darurats l").
+		Select("l.id::text as id, l.jenis_masalah, k.nama as kecamatan_nama, l.status, l.prioritas, l.created_at").
+		Joins("JOIN kecamatans k ON k.id = l.kecamatan_id").
+		Where("l.status IN ?", []string{"baru", "proses"}).
+		Order("l.prioritas ASC, l.created_at DESC").
+		Limit(5).
+		Scan(&activeAlerts)
 
 	// Update hari ini = harga yang di-input hari ini
 	var updateHariIni int64
@@ -82,8 +119,9 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 			FROM harga_pasars h
 			JOIN komoditas k ON k.id = h.komoditas_id
 			WHERE LOWER(k.nama) LIKE ?
-			AND h.tanggal >= ?`,
-			"%"+namaLike+"%", time.Now().AddDate(0, 0, -7)).Scan(&r)
+			AND h.tanggal >= ?
+			AND h.tanggal <= ?`,
+			"%"+namaLike+"%", rangeStart, latestHargaDate).Scan(&r)
 		return r.Avg
 	}
 	avgHargaBeras := avgQuery("beras")
@@ -107,17 +145,24 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 			JOIN komoditas k ON k.id = h.komoditas_id
 			WHERE LOWER(k.nama) LIKE ?
 			AND h.tanggal >= ?
+			AND h.tanggal <= ?
 			GROUP BY DATE(h.tanggal)
 			ORDER BY tanggal ASC`,
-			"%"+namaLike+"%", time.Now().AddDate(0, 0, -6)).Scan(&results)
-		out := make([]float64, 7)
+			"%"+namaLike+"%", rangeStart, latestHargaDate).Scan(&results)
+		out := make([]float64, days)
 		dateMap := make(map[string]float64)
 		for _, r := range results {
 			dateMap[r.Tanggal] = r.Avg
 		}
-		for i := 0; i < 7; i++ {
-			d := time.Now().AddDate(0, 0, -(6 - i)).Format("2006-01-02")
-			out[i] = dateMap[d]
+		lastValue := 0.0
+		for i := 0; i < days; i++ {
+			d := rangeStart.AddDate(0, 0, i).Format("2006-01-02")
+			if v, ok := dateMap[d]; ok {
+				lastValue = v
+				out[i] = v
+				continue
+			}
+			out[i] = lastValue
 		}
 		return out
 	}
@@ -127,6 +172,11 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 	harga7HariCabai := dailyQuery("cabai")
 	harga7HariGula := dailyQuery("gula")
 	harga7HariMinyak := dailyQuery("minyak")
+
+	tanggalLabels := make([]string, days)
+	for i := 0; i < days; i++ {
+		tanggalLabels[i] = rangeStart.AddDate(0, 0, i).Format("02/01")
+	}
 
 	// Distribusi aktif
 	var distribusiAktif int64
@@ -142,26 +192,29 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		Count(&laporanBulanIni)
 
 	c.JSON(200, gin.H{
-		"total_komoditas":    totalKomoditas,
-		"alert_count":        alertCount,
-		"update_hari_ini":    updateHariIni,
-		"kecamatan_aman":     kecamatanAman,
-		"kecamatan_waspada":  kecamatanWaspada,
-		"kecamatan_kritis":   kecamatanKritis,
-		"avg_harga_beras":    avgHargaBeras,
-		"avg_harga_jagung":   avgHargaJagung,
-		"avg_harga_kedelai":  avgHargaKedelai,
-		"avg_harga_cabai":    avgHargaCabai,
-		"avg_harga_gula":     avgHargaGula,
-		"avg_harga_minyak":   avgHargaMinyak,
+		"periode":             periode,
+		"tanggal_labels":      tanggalLabels,
+		"total_komoditas":     totalKomoditas,
+		"alert_count":         alertCount,
+		"update_hari_ini":     updateHariIni,
+		"kecamatan_aman":      kecamatanAman,
+		"kecamatan_waspada":   kecamatanWaspada,
+		"kecamatan_kritis":    kecamatanKritis,
+		"avg_harga_beras":     avgHargaBeras,
+		"avg_harga_jagung":    avgHargaJagung,
+		"avg_harga_kedelai":   avgHargaKedelai,
+		"avg_harga_cabai":     avgHargaCabai,
+		"avg_harga_gula":      avgHargaGula,
+		"avg_harga_minyak":    avgHargaMinyak,
 		"harga_7hari_beras":   harga7HariBeras,
 		"harga_7hari_jagung":  harga7HariJagung,
 		"harga_7hari_kedelai": harga7HariKedelai,
 		"harga_7hari_cabai":   harga7HariCabai,
 		"harga_7hari_gula":    harga7HariGula,
 		"harga_7hari_minyak":  harga7HariMinyak,
-		"distribusi_aktif":   distribusiAktif,
-		"laporan_bulan_ini":  laporanBulanIni,
+		"distribusi_aktif":    distribusiAktif,
+		"laporan_bulan_ini":   laporanBulanIni,
+		"active_alerts":       activeAlerts,
 	})
 }
 

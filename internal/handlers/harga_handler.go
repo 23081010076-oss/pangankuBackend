@@ -127,7 +127,8 @@ func (h *HargaHandler) GetHarga(c *gin.Context) {
 // GetLatest - GET /api/v1/harga/latest
 func (h *HargaHandler) GetLatest(c *gin.Context) {
 	ctx := context.Background()
-	cacheKey := "harga:latest"
+	mode := c.DefaultQuery("mode", "agregat")
+	cacheKey := fmt.Sprintf("harga:latest:%s", mode)
 
 	// Cek cache
 	cached, err := h.rdb.Get(ctx, cacheKey).Result()
@@ -139,58 +140,119 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 		}
 	}
 
-	// Query latest harga per komoditas
-	var rows []struct {
-		ID            uuid.UUID
-		KomoditasID   uuid.UUID
-		KomoditasNama string
-		KecamatanID   uuid.UUID
-		KecamatanNama string
-		HargaPerKg    float64
-		Tanggal       time.Time
-	}
-
-	h.db.Raw(`
-		SELECT DISTINCT ON (h.komoditas_id) 
-			h.id, h.komoditas_id, k.nama as komoditas_nama, 
-			h.kecamatan_id, kc.nama as kecamatan_nama,
-			h.harga_per_kg, h.tanggal
-		FROM harga_pasars h
-		JOIN komoditas k ON k.id = h.komoditas_id
-		JOIN kecamatans kc ON kc.id = h.kecamatan_id
-		ORDER BY h.komoditas_id, h.tanggal DESC
-	`).Scan(&rows)
-
 	var hasil []HargaLatest
-	for _, row := range rows {
-		// Hitung perubahan vs hari sebelumnya
-		var kemarin models.HargaPasar
-		h.db.Where("komoditas_id = ? AND tanggal < ?", row.KomoditasID, row.Tanggal).
-			Order("tanggal DESC").
-			First(&kemarin)
 
-		perubahan := 0.0
-		trend := "STABIL"
-		if kemarin.ID != uuid.Nil {
-			perubahan = (row.HargaPerKg - kemarin.HargaPerKg) / kemarin.HargaPerKg * 100
-			if perubahan > 0 {
-				trend = "NAIK"
-			} else if perubahan < 0 {
-				trend = "TURUN"
-			}
+	if mode == "per_kecamatan" {
+		// Perilaku lama: satu data per komoditas dari kecamatan pada timestamp terbaru
+		var rows []struct {
+			ID            uuid.UUID
+			KomoditasID   uuid.UUID
+			KomoditasNama string
+			KecamatanID   uuid.UUID
+			KecamatanNama string
+			HargaPerKg    float64
+			Tanggal       time.Time
 		}
 
-		hasil = append(hasil, HargaLatest{
-			ID:            row.ID,
-			KomoditasID:   row.KomoditasID,
-			KomoditasNama: row.KomoditasNama,
-			KecamatanID:   row.KecamatanID,
-			KecamatanNama: row.KecamatanNama,
-			HargaPerKg:    row.HargaPerKg,
-			Tanggal:       row.Tanggal,
-			PerubahanPct:  perubahan,
-			Trend:         trend,
-		})
+		h.db.Raw(`
+			SELECT DISTINCT ON (h.komoditas_id)
+				h.id, h.komoditas_id, k.nama as komoditas_nama,
+				h.kecamatan_id, kc.nama as kecamatan_nama,
+				h.harga_per_kg, h.tanggal
+			FROM harga_pasars h
+			JOIN komoditas k ON k.id = h.komoditas_id
+			JOIN kecamatans kc ON kc.id = h.kecamatan_id
+			ORDER BY h.komoditas_id, h.tanggal DESC
+		`).Scan(&rows)
+
+		for _, row := range rows {
+			var kemarin models.HargaPasar
+			h.db.Where("komoditas_id = ? AND tanggal < ?", row.KomoditasID, row.Tanggal).
+				Order("tanggal DESC").
+				First(&kemarin)
+
+			perubahan := 0.0
+			trend := "STABIL"
+			if kemarin.ID != uuid.Nil {
+				perubahan = (row.HargaPerKg - kemarin.HargaPerKg) / kemarin.HargaPerKg * 100
+				if perubahan > 0 {
+					trend = "NAIK"
+				} else if perubahan < 0 {
+					trend = "TURUN"
+				}
+			}
+
+			hasil = append(hasil, HargaLatest{
+				ID:            row.ID,
+				KomoditasID:   row.KomoditasID,
+				KomoditasNama: row.KomoditasNama,
+				KecamatanID:   row.KecamatanID,
+				KecamatanNama: row.KecamatanNama,
+				HargaPerKg:    row.HargaPerKg,
+				Tanggal:       row.Tanggal,
+				PerubahanPct:  perubahan,
+				Trend:         trend,
+			})
+		}
+	} else {
+		// Default: agregat rata-rata semua kecamatan per komoditas
+		var rows []struct {
+			KomoditasID   uuid.UUID
+			KomoditasNama string
+			HargaPerKg    float64
+			Tanggal       time.Time
+			PrevHarga     float64
+		}
+
+		h.db.Raw(`
+			WITH latest_date AS (
+				SELECT komoditas_id, MAX(DATE(tanggal)) AS tgl
+				FROM harga_pasars
+				GROUP BY komoditas_id
+			), latest_avg AS (
+				SELECT h.komoditas_id, k.nama AS komoditas_nama, ld.tgl,
+					AVG(h.harga_per_kg) AS avg_harga
+				FROM harga_pasars h
+				JOIN latest_date ld ON ld.komoditas_id = h.komoditas_id AND DATE(h.tanggal) = ld.tgl
+				JOIN komoditas k ON k.id = h.komoditas_id
+				GROUP BY h.komoditas_id, k.nama, ld.tgl
+			), prev_avg AS (
+				SELECT ld.komoditas_id, AVG(h.harga_per_kg) AS prev_harga
+				FROM latest_date ld
+				LEFT JOIN harga_pasars h ON h.komoditas_id = ld.komoditas_id AND DATE(h.tanggal) = ld.tgl - INTERVAL '1 day'
+				GROUP BY ld.komoditas_id
+			)
+			SELECT la.komoditas_id, la.komoditas_nama, la.avg_harga AS harga_per_kg,
+				la.tgl AS tanggal, COALESCE(pa.prev_harga, 0) AS prev_harga
+			FROM latest_avg la
+			LEFT JOIN prev_avg pa ON pa.komoditas_id = la.komoditas_id
+			ORDER BY la.komoditas_nama ASC
+		`).Scan(&rows)
+
+		for _, row := range rows {
+			perubahan := 0.0
+			trend := "STABIL"
+			if row.PrevHarga > 0 {
+				perubahan = (row.HargaPerKg - row.PrevHarga) / row.PrevHarga * 100
+				if perubahan > 0 {
+					trend = "NAIK"
+				} else if perubahan < 0 {
+					trend = "TURUN"
+				}
+			}
+
+			hasil = append(hasil, HargaLatest{
+				ID:            uuid.Nil,
+				KomoditasID:   row.KomoditasID,
+				KomoditasNama: row.KomoditasNama,
+				KecamatanID:   uuid.Nil,
+				KecamatanNama: "",
+				HargaPerKg:    row.HargaPerKg,
+				Tanggal:       row.Tanggal,
+				PerubahanPct:  perubahan,
+				Trend:         trend,
+			})
+		}
 	}
 
 	// Cache selama 15 menit

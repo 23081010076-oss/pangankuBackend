@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"log"
@@ -75,15 +75,32 @@ func SeedData(db *gorm.DB) {
 	// Seed kecamatan di Kabupaten Lamongan
 	kecamatan := []models.Kecamatan{
 		{Nama: "Babat", Lat: -7.1340, Lng: 112.1640, LuasHa: 8543},
+		{Nama: "Bluluk", Lat: -7.3130, Lng: 112.2370, LuasHa: 6921},
+		{Nama: "Brondong", Lat: -6.8790, Lng: 112.2920, LuasHa: 6510},
 		{Nama: "Lamongan", Lat: -7.1169, Lng: 112.4131, LuasHa: 4725},
-		{Nama: "Sekaran", Lat: -7.1800, Lng: 112.2100, LuasHa: 6842},
 		{Nama: "Deket", Lat: -7.0900, Lng: 112.3000, LuasHa: 5234},
-		{Nama: "Tikung", Lat: -7.2000, Lng: 112.4500, LuasHa: 7123},
-		{Nama: "Sarirejo", Lat: -7.0500, Lng: 112.3500, LuasHa: 6345},
-		{Nama: "Pucuk", Lat: -7.1500, Lng: 112.5000, LuasHa: 4567},
+		{Nama: "Glagah", Lat: -7.1280, Lng: 112.3360, LuasHa: 5012},
+		{Nama: "Kalitengah", Lat: -7.0600, Lng: 112.3500, LuasHa: 5480},
+		{Nama: "Karangbinangun", Lat: -7.0210, Lng: 112.3410, LuasHa: 5195},
 		{Nama: "Karanggeneng", Lat: -7.0300, Lng: 112.2800, LuasHa: 5678},
 		{Nama: "Kedungpring", Lat: -7.1234, Lng: 112.3456, LuasHa: 6789},
+		{Nama: "Kembangbahu", Lat: -7.2000, Lng: 112.3200, LuasHa: 6031},
+		{Nama: "Laren", Lat: -6.9530, Lng: 112.4310, LuasHa: 5920},
+		{Nama: "Maduran", Lat: -7.0050, Lng: 112.3740, LuasHa: 4880},
+		{Nama: "Mantup", Lat: -7.2900, Lng: 112.3650, LuasHa: 7420},
+		{Nama: "Modo", Lat: -7.2680, Lng: 112.2120, LuasHa: 7124},
+		{Nama: "Ngimbang", Lat: -7.2360, Lng: 112.1960, LuasHa: 7540},
 		{Nama: "Paciran", Lat: -6.8800, Lng: 112.3700, LuasHa: 5432},
+		{Nama: "Pucuk", Lat: -7.1500, Lng: 112.5000, LuasHa: 4567},
+		{Nama: "Sambeng", Lat: -7.2400, Lng: 112.2770, LuasHa: 7350},
+		{Nama: "Sarirejo", Lat: -7.0500, Lng: 112.3500, LuasHa: 6345},
+		{Nama: "Sekaran", Lat: -7.1800, Lng: 112.2100, LuasHa: 6842},
+		{Nama: "Solokuro", Lat: -6.9620, Lng: 112.3300, LuasHa: 5892},
+		{Nama: "Sugio", Lat: -7.2070, Lng: 112.4200, LuasHa: 6285},
+		{Nama: "Sukodadi", Lat: -7.0650, Lng: 112.4100, LuasHa: 5168},
+		{Nama: "Sukorame", Lat: -7.3030, Lng: 112.3070, LuasHa: 6980},
+		{Nama: "Tikung", Lat: -7.2000, Lng: 112.4500, LuasHa: 7123},
+		{Nama: "Turi", Lat: -7.1900, Lng: 112.3800, LuasHa: 5640},
 	}
 
 	for _, kec := range kecamatan {
@@ -218,5 +235,3 @@ func SeedDummyData(db *gorm.DB) {
 	log.Println("âœ“ Laporan darurat dummy berhasil dibuat")
 	log.Println("âœ“ Dummy data seeding selesai")
 }
-
-

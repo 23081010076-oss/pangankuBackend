@@ -320,3 +320,4 @@ func (h *LaporanHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/laporan/:id/status", h.UpdateLaporanStatus)
 	r.DELETE("/laporan/:id", h.DeleteLaporan)
 }
+

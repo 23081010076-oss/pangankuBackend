@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -17,10 +20,11 @@ import (
 type LaporanHandler struct {
 	db  *gorm.DB
 	rdb *redis.Client
+	tg  *TelegramHandler
 }
 
-func NewLaporanHandler(db *gorm.DB, rdb *redis.Client) *LaporanHandler {
-	return &LaporanHandler{db: db, rdb: rdb}
+func NewLaporanHandler(db *gorm.DB, rdb *redis.Client, tg *TelegramHandler) *LaporanHandler {
+	return &LaporanHandler{db: db, rdb: rdb, tg: tg}
 }
 
 type CreateLaporanRequest struct {
@@ -180,6 +184,39 @@ func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 			IPAddress: c.ClientIP(),
 		})
 	}()
+
+	// Simpan notifikasi ke database untuk admin agar muncul di aplikasi
+	go func(lap models.LaporanDarurat, kecName, deskripsi string) {
+		// Notifikasi untuk pelapor (user yang mengirim)
+		h.db.Create(&models.Notifikasi{
+			UserID: lap.PelaporID,
+			Judul:  "Laporan Diterima",
+			Isi:    "Laporan darurat Anda telah berhasil dikirim dan sedang dalam peninjauan.",
+			Tipe:   "info",
+		})
+
+		var admins []models.User
+		h.db.Where("role IN ?", []string{"admin", "superadmin", "dinas"}).Find(&admins)
+		for _, admin := range admins {
+			h.db.Create(&models.Notifikasi{
+				UserID: admin.ID,
+				Judul:  "Laporan Darurat Baru",
+				Isi:    fmt.Sprintf("Laporan baru dari kecamatan %s. %s", kecName, lap.JenisMasalah),
+				Tipe:   "warning",
+			})
+		}
+
+		if h.tg != nil {
+			chatIDStr := os.Getenv("TELEGRAM_CHAT_ID")
+			if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil && chatID != 0 {
+				msgText := fmt.Sprintf(
+					"🚨 <b>LAPORAN DARURAT BARU!</b> 🚨\n\n📍 <b>Kecamatan:</b> %s\n🛑 <b>Jenis Masalah:</b> %s\n⚠️ <b>Prioritas:</b> %d\n📝 <b>Deskripsi:</b> %s",
+					kecName, lap.JenisMasalah, lap.Prioritas, deskripsi,
+				)
+				h.tg.SendBroadcastMessage(context.Background(), chatID, msgText)
+			}
+		}
+	}(laporan, kecamatan.Nama, req.Deskripsi)
 
 	// Kembalikan data dengan deskripsi asli (bukan enkripsi)
 	laporan.Deskripsi = req.Deskripsi

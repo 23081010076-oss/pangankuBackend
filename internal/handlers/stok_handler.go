@@ -26,15 +26,21 @@ type StokRequest struct {
 	KapasitasKg float64 `json:"kapasitas_kg" binding:"required,gt=0"`
 }
 
+const (
+	// Threshold Status Ketahanan Pangan (Persentase dari Kapasitas)
+	ThresholdAman    = 70.0 // Stok >= 70% dianggap AMAN
+	ThresholdWaspada = 30.0 // Stok >= 30% s.d < 70% dianggap WASPADA, < 30% dianggap KRITIS
+)
+
 func hitungStatusStok(stokKg, kapasitasKg float64) string {
 	if kapasitasKg == 0 {
 		return "kritis"
 	}
 	pct := stokKg / kapasitasKg * 100
 	switch {
-	case pct >= 70:
+	case pct >= ThresholdAman:
 		return "aman"
-	case pct >= 30:
+	case pct >= ThresholdWaspada:
 		return "waspada"
 	default:
 		return "kritis"

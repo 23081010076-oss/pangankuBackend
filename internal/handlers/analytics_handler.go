@@ -83,12 +83,12 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		}
 		pct := s.StokKg / s.KapasitasKg * 100
 		existing := kecamatanStatusMap[s.KecamatanID.String()]
-		// Ambil status terburuk per kecamatan
+		// Ambil status terburuk per kecamatan menggunakan threshold terpusat
 		var newStatus string
 		switch {
-		case pct >= 70:
+		case pct >= ThresholdAman:
 			newStatus = "aman"
-		case pct >= 30:
+		case pct >= ThresholdWaspada:
 			newStatus = "waspada"
 		default:
 			newStatus = "kritis"
@@ -99,14 +99,30 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 	}
 
 	kecamatanAman, kecamatanWaspada, kecamatanKritis := 0, 0, 0
-	for _, st := range kecamatanStatusMap {
+	var listKecamatanAman, listKecamatanWaspada, listKecamatanKritis []string
+
+	var allKecamatan []models.Kecamatan
+	h.db.Find(&allKecamatan)
+	kecNameMap := make(map[string]string)
+	for _, k := range allKecamatan {
+		kecNameMap[k.ID.String()] = k.Nama
+	}
+
+	for idStr, st := range kecamatanStatusMap {
+		name := kecNameMap[idStr]
+		if name == "" {
+			name = "Unknown"
+		}
 		switch st {
 		case "aman":
 			kecamatanAman++
+			listKecamatanAman = append(listKecamatanAman, name)
 		case "waspada":
 			kecamatanWaspada++
+			listKecamatanWaspada = append(listKecamatanWaspada, name)
 		case "kritis":
 			kecamatanKritis++
+			listKecamatanKritis = append(listKecamatanKritis, name)
 		}
 	}
 
@@ -192,29 +208,32 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		Count(&laporanBulanIni)
 
 	c.JSON(200, gin.H{
-		"periode":             periode,
-		"tanggal_labels":      tanggalLabels,
-		"total_komoditas":     totalKomoditas,
-		"alert_count":         alertCount,
-		"update_hari_ini":     updateHariIni,
-		"kecamatan_aman":      kecamatanAman,
-		"kecamatan_waspada":   kecamatanWaspada,
-		"kecamatan_kritis":    kecamatanKritis,
-		"avg_harga_beras":     avgHargaBeras,
-		"avg_harga_jagung":    avgHargaJagung,
-		"avg_harga_kedelai":   avgHargaKedelai,
-		"avg_harga_cabai":     avgHargaCabai,
-		"avg_harga_gula":      avgHargaGula,
-		"avg_harga_minyak":    avgHargaMinyak,
-		"harga_7hari_beras":   harga7HariBeras,
-		"harga_7hari_jagung":  harga7HariJagung,
-		"harga_7hari_kedelai": harga7HariKedelai,
-		"harga_7hari_cabai":   harga7HariCabai,
-		"harga_7hari_gula":    harga7HariGula,
-		"harga_7hari_minyak":  harga7HariMinyak,
-		"distribusi_aktif":    distribusiAktif,
-		"laporan_bulan_ini":   laporanBulanIni,
-		"active_alerts":       activeAlerts,
+		"periode":                periode,
+		"tanggal_labels":         tanggalLabels,
+		"total_komoditas":        totalKomoditas,
+		"alert_count":            alertCount,
+		"update_hari_ini":        updateHariIni,
+		"kecamatan_aman":         kecamatanAman,
+		"kecamatan_waspada":      kecamatanWaspada,
+		"kecamatan_kritis":       kecamatanKritis,
+		"list_kecamatan_aman":    listKecamatanAman,
+		"list_kecamatan_waspada": listKecamatanWaspada,
+		"list_kecamatan_kritis":  listKecamatanKritis,
+		"avg_harga_beras":        avgHargaBeras,
+		"avg_harga_jagung":       avgHargaJagung,
+		"avg_harga_kedelai":      avgHargaKedelai,
+		"avg_harga_cabai":        avgHargaCabai,
+		"avg_harga_gula":         avgHargaGula,
+		"avg_harga_minyak":       avgHargaMinyak,
+		"harga_7hari_beras":      harga7HariBeras,
+		"harga_7hari_jagung":     harga7HariJagung,
+		"harga_7hari_kedelai":    harga7HariKedelai,
+		"harga_7hari_cabai":      harga7HariCabai,
+		"harga_7hari_gula":       harga7HariGula,
+		"harga_7hari_minyak":     harga7HariMinyak,
+		"distribusi_aktif":       distribusiAktif,
+		"laporan_bulan_ini":      laporanBulanIni,
+		"active_alerts":          activeAlerts,
 	})
 }
 
@@ -251,9 +270,9 @@ func (h *AnalyticsHandler) GetStatusPangan(c *gin.Context) {
 		if totalKapasitas > 0 {
 			stokPersen = totalStok / totalKapasitas * 100
 			switch {
-			case stokPersen >= 70:
+			case stokPersen >= ThresholdAman:
 				statusStok = "aman"
-			case stokPersen >= 30:
+			case stokPersen >= ThresholdWaspada:
 				statusStok = "waspada"
 			default:
 				statusStok = "kritis"

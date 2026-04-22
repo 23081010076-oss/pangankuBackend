@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/hash_test.go
+// Bagian: security
+// File: hash_test
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security_test
 
 import (
@@ -73,3 +78,4 @@ func BenchmarkVerifyPassword(b *testing.B) {
 		security.VerifyPassword(password, hash)
 	}
 }
+

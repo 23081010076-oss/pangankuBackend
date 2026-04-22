@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/kecamatan_handler.go
+// Bagian: handler
+// File: kecamatan_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -8,14 +13,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type KecamatanHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewKecamatanHandler(db *gorm.DB) *KecamatanHandler {
 	return &KecamatanHandler{db: db}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type KecamatanRequest struct {
 	Nama   string  `json:"nama" binding:"required"`
 	Lat    float64 `json:"lat"`
@@ -24,6 +32,7 @@ type KecamatanRequest struct {
 }
 
 // GetKecamatan - GET /api/v1/kecamatan
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *KecamatanHandler) GetKecamatan(c *gin.Context) {
 	var list []models.Kecamatan
 	h.db.Order("nama asc").Find(&list)
@@ -31,6 +40,7 @@ func (h *KecamatanHandler) GetKecamatan(c *gin.Context) {
 }
 
 // GetKecamatanByID - GET /api/v1/kecamatan/:id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *KecamatanHandler) GetKecamatanByID(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -48,6 +58,7 @@ func (h *KecamatanHandler) GetKecamatanByID(c *gin.Context) {
 }
 
 // CreateKecamatan - POST /api/v1/kecamatan
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *KecamatanHandler) CreateKecamatan(c *gin.Context) {
 	var req KecamatanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -83,6 +94,7 @@ func (h *KecamatanHandler) CreateKecamatan(c *gin.Context) {
 }
 
 // UpdateKecamatan - PUT /api/v1/kecamatan/:id
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *KecamatanHandler) UpdateKecamatan(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -113,6 +125,7 @@ func (h *KecamatanHandler) UpdateKecamatan(c *gin.Context) {
 }
 
 // DeleteKecamatan - DELETE /api/v1/kecamatan/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *KecamatanHandler) DeleteKecamatan(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -128,6 +141,7 @@ func (h *KecamatanHandler) DeleteKecamatan(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Kecamatan berhasil dihapus"})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *KecamatanHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/kecamatan", h.GetKecamatan)
 	r.GET("/kecamatan/:id", h.GetKecamatanByID)

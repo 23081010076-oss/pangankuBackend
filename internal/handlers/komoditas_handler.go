@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/komoditas_handler.go
+// Bagian: handler
+// File: komoditas_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -8,14 +13,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type KomoditasHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewKomoditasHandler(db *gorm.DB) *KomoditasHandler {
 	return &KomoditasHandler{db: db}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type KomoditasRequest struct {
 	Nama     string `json:"nama" binding:"required"`
 	Satuan   string `json:"satuan"`
@@ -23,6 +31,7 @@ type KomoditasRequest struct {
 }
 
 // GetKomoditas - GET /api/v1/komoditas
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *KomoditasHandler) GetKomoditas(c *gin.Context) {
 	kategori := c.Query("kategori")
 
@@ -38,6 +47,7 @@ func (h *KomoditasHandler) GetKomoditas(c *gin.Context) {
 }
 
 // GetKomoditasByID - GET /api/v1/komoditas/:id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *KomoditasHandler) GetKomoditasByID(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -55,6 +65,7 @@ func (h *KomoditasHandler) GetKomoditasByID(c *gin.Context) {
 }
 
 // CreateKomoditas - POST /api/v1/komoditas
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *KomoditasHandler) CreateKomoditas(c *gin.Context) {
 	var req KomoditasRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -94,6 +105,7 @@ func (h *KomoditasHandler) CreateKomoditas(c *gin.Context) {
 }
 
 // UpdateKomoditas - PUT /api/v1/komoditas/:id
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *KomoditasHandler) UpdateKomoditas(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -123,6 +135,7 @@ func (h *KomoditasHandler) UpdateKomoditas(c *gin.Context) {
 }
 
 // DeleteKomoditas - DELETE /api/v1/komoditas/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *KomoditasHandler) DeleteKomoditas(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -138,6 +151,7 @@ func (h *KomoditasHandler) DeleteKomoditas(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Komoditas berhasil dihapus"})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *KomoditasHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/komoditas", h.GetKomoditas)
 	r.GET("/komoditas/:id", h.GetKomoditasByID)

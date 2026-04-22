@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/algorithms/price_forecast_test.go
+// Bagian: algorithm
+// File: price_forecast_test
+// Fungsi utama: File ini berisi logika perhitungan atau algoritma pendukung fitur aplikasi.
 package algorithms_test
 
 import (
@@ -112,3 +117,4 @@ func BenchmarkForecast(b *testing.B) {
 		algorithms.Forecast(prices)
 	}
 }
+

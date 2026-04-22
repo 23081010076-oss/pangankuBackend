@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/auth_handler.go
+// Bagian: handler
+// File: auth_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -14,15 +19,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type AuthHandler struct {
 	db  *gorm.DB
 	rdb *redis.Client
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewAuthHandler(db *gorm.DB, rdb *redis.Client) *AuthHandler {
 	return &AuthHandler{db: db, rdb: rdb}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type RegisterRequest struct {
 	Name     string `json:"name" binding:"required"`
 	Email    string `json:"email" binding:"required,email"`
@@ -31,16 +39,19 @@ type RegisterRequest struct {
 	Role     string `json:"role"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 // Register - POST /api/v1/auth/register
+// Handler ini menangani proses pendaftaran user baru.
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -65,9 +76,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Buat user baru
 	role := req.Role
 	if role == "" {
-		role = "publik"
+		role = "petani"
 	}
-	allowedRoles := map[string]bool{"publik": true, "petani": true, "pedagang": true}
+	allowedRoles := map[string]bool{"petani": true}
 	if !allowedRoles[role] {
 		c.JSON(400, gin.H{"error": "Role tidak valid"})
 		return
@@ -109,6 +120,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // Login - POST /api/v1/auth/login
+// Handler ini menangani proses login dan menghasilkan response autentikasi.
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -179,6 +191,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 // Logout - POST /api/v1/auth/logout
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// Ambil token dari header
 	authHeader := c.GetHeader("Authorization")
@@ -215,6 +228,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 // Refresh - POST /api/v1/auth/refresh
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -255,6 +269,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 }
 
 // Me - GET /api/v1/auth/me
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -275,6 +290,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 // RegisterRoutes mendaftarkan semua route auth
+// Handler ini menangani proses pendaftaran user baru.
 func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup) {
 	auth := r.Group("/auth")
 	{

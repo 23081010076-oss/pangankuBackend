@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/notifikasi_handler.go
+// Bagian: handler
+// File: notifikasi_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -10,15 +15,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type NotifikasiHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewNotifikasiHandler(db *gorm.DB) *NotifikasiHandler {
 	return &NotifikasiHandler{db: db}
 }
 
 // GetNotifikasi - GET /api/v1/notifikasi
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *NotifikasiHandler) GetNotifikasi(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	onlyUnread := c.Query("unread") == "true"
@@ -44,18 +52,19 @@ func (h *NotifikasiHandler) GetNotifikasi(c *gin.Context) {
 	h.db.Model(&models.Notifikasi{}).Where("user_id = ? AND is_read = false", userID).Count(&unreadCount)
 
 	var list []models.Notifikasi
-	query.Offset((page-1)*limit).Limit(limit).Order("created_at desc").Find(&list)
+	query.Offset((page - 1) * limit).Limit(limit).Order("created_at desc").Find(&list)
 
 	c.JSON(200, gin.H{
-		"data":          list,
-		"total":         total,
-		"unread_count":  unreadCount,
-		"page":          page,
-		"limit":         limit,
+		"data":         list,
+		"total":        total,
+		"unread_count": unreadCount,
+		"page":         page,
+		"limit":        limit,
 	})
 }
 
 // MarkAsRead - PUT /api/v1/notifikasi/:id/read
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *NotifikasiHandler) MarkAsRead(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -78,6 +87,7 @@ func (h *NotifikasiHandler) MarkAsRead(c *gin.Context) {
 }
 
 // MarkAllAsRead - PUT /api/v1/notifikasi/read-all
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *NotifikasiHandler) MarkAllAsRead(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -100,6 +110,7 @@ func SendNotifikasi(db *gorm.DB, userID uuid.UUID, judul, isi, tipe, deepLink st
 	})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *NotifikasiHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/notifikasi", h.GetNotifikasi)
 	r.PUT("/notifikasi/read-all", h.MarkAllAsRead)

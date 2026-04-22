@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/telegram_handler.go
+// Bagian: handler
+// File: telegram_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -12,12 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type TelegramHandler struct {
 	db  *gorm.DB
 	rdb *redis.Client
 	bot *tgbotapi.BotAPI
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewTelegramHandler(db *gorm.DB, rdb *redis.Client) *TelegramHandler {
 	// Initialize bot using token from environment variables
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -43,6 +50,7 @@ func NewTelegramHandler(db *gorm.DB, rdb *redis.Client) *TelegramHandler {
 }
 
 // RegisterRoutes registers endpoints for custom Telegram-related actions
+// Handler ini menangani proses pendaftaran user baru.
 func (h *TelegramHandler) RegisterRoutes(r *gin.RouterGroup) {
 	tgGroup := r.Group("/telegram")
 	{
@@ -51,6 +59,7 @@ func (h *TelegramHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // SendMessage API endpoint to trigger sending telegram from front-end/test via API
+// Handler ini mengirim pesan atau notifikasi ke layanan eksternal.
 func (h *TelegramHandler) SendMessage(c *gin.Context) {
 	if h.bot == nil {
 		c.JSON(503, gin.H{"error": "Telegram Bot is not configured. Missing TELEGRAM_BOT_TOKEN"})
@@ -83,6 +92,7 @@ func (h *TelegramHandler) SendMessage(c *gin.Context) {
 }
 
 // SendBroadcastMessage is a helper function to send message programmatically
+// Handler ini mengirim pesan atau notifikasi ke layanan eksternal.
 func (h *TelegramHandler) SendBroadcastMessage(ctx context.Context, chatID int64, textMsg string) error {
 	if h.bot == nil {
 		return fmt.Errorf("bot not initialized")

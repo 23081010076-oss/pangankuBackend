@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/config/seeder.go
+// Bagian: config
+// File: seeder
+// Fungsi utama: File ini mengatur koneksi, konfigurasi, migrasi, atau seed data backend.
 package config
 
 import (
@@ -5,49 +10,25 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/panganku/backend/internal/models"
 	"github.com/panganku/backend/internal/security"
 	"gorm.io/gorm"
 )
 
+type seedUserDefinition struct {
+	Name          string
+	Email         string
+	Phone         string
+	Role          string
+	PasswordPlain string
+	KecamatanName string
+}
+
+// SeedData mengisi data master awal agar aplikasi bisa langsung dipakai setelah setup.
 func SeedData(db *gorm.DB) {
 	log.Println("Seeding initial data...")
 
-	// Cek apakah sudah ada admin
-	var adminCount int64
-	db.Model(&models.User{}).Where("role = ?", "admin").Count(&adminCount)
-	if adminCount > 0 {
-		log.Println("Admin already exists, skipping seed")
-		return
-	}
-
-	// Hash password default
-	hashedPassword, err := security.HashPassword("Admin123!")
-	if err != nil {
-		log.Printf("Failed to hash password: %v", err)
-		return
-	}
-
-	// Buat admin user
-	admin := models.User{
-		Name:     "Administrator",
-		Email:    "admin@panganku.id",
-		Password: hashedPassword,
-		Phone:    "081234567890",
-		Role:     "admin",
-		IsActive: true,
-	}
-
-	if err := db.Create(&admin).Error; err != nil {
-		log.Printf("Failed to create admin: %v", err)
-		return
-	}
-
-	log.Println("âœ“ Admin user created successfully")
-	log.Println("  Email: admin@panganku.id")
-	log.Println("  Password: Admin123!")
-
-	// Seed beberapa komoditas
 	komoditas := []models.Komoditas{
 		{Nama: "Beras", Satuan: "kg", Kategori: "Padi-padian"},
 		{Nama: "Jagung", Satuan: "kg", Kategori: "Padi-padian"},
@@ -60,19 +41,18 @@ func SeedData(db *gorm.DB) {
 		{Nama: "Telur Ayam", Satuan: "kg", Kategori: "Protein"},
 	}
 
-	for _, k := range komoditas {
+	for _, item := range komoditas {
 		var count int64
-		db.Model(&models.Komoditas{}).Where("nama = ?", k.Nama).Count(&count)
+		db.Model(&models.Komoditas{}).Where("nama = ?", item.Nama).Count(&count)
 		if count == 0 {
-			if err := db.Create(&k).Error; err != nil {
-				log.Printf("Failed to create komoditas %s: %v", k.Nama, err)
+			if err := db.Create(&item).Error; err != nil {
+				log.Printf("Failed to create komoditas %s: %v", item.Nama, err)
 			} else {
-				log.Printf("âœ“ Komoditas created: %s", k.Nama)
+				log.Printf("Komoditas created: %s", item.Nama)
 			}
 		}
 	}
 
-	// Seed kecamatan di Kabupaten Lamongan
 	kecamatan := []models.Kecamatan{
 		{Nama: "Babat", Lat: -7.1340, Lng: 112.1640, LuasHa: 8543},
 		{Nama: "Bluluk", Lat: -7.3130, Lng: 112.2370, LuasHa: 6921},
@@ -103,24 +83,56 @@ func SeedData(db *gorm.DB) {
 		{Nama: "Turi", Lat: -7.1900, Lng: 112.3800, LuasHa: 5640},
 	}
 
-	for _, kec := range kecamatan {
+	for _, item := range kecamatan {
 		var count int64
-		db.Model(&models.Kecamatan{}).Where("nama = ?", kec.Nama).Count(&count)
+		db.Model(&models.Kecamatan{}).Where("nama = ?", item.Nama).Count(&count)
 		if count == 0 {
-			if err := db.Create(&kec).Error; err != nil {
-				log.Printf("Failed to create kecamatan %s: %v", kec.Nama, err)
+			if err := db.Create(&item).Error; err != nil {
+				log.Printf("Failed to create kecamatan %s: %v", item.Nama, err)
 			} else {
-				log.Printf("âœ“ Kecamatan created: %s", kec.Nama)
+				log.Printf("Kecamatan created: %s", item.Nama)
 			}
 		}
 	}
 
-	log.Println("âœ“ Seeding completed successfully")
+	seedUsers := []seedUserDefinition{
+		{
+			Name:          "Administrator",
+			Email:         "admin@panganku.id",
+			Phone:         "081234567890",
+			Role:          "admin",
+			PasswordPlain: "Admin123!",
+		},
+		{
+			Name:          "Petugas Dinas Pangan",
+			Email:         "petugas@panganku.id",
+			Phone:         "081234567891",
+			Role:          "petugas",
+			PasswordPlain: "Petugas123!",
+			KecamatanName: "Lamongan",
+		},
+		{
+			Name:          "Petani Binaan",
+			Email:         "petani@panganku.id",
+			Phone:         "081234567892",
+			Role:          "petani",
+			PasswordPlain: "Petani123!",
+			KecamatanName: "Babat",
+		},
+	}
+
+	for _, seedUser := range seedUsers {
+		if err := ensureSeedUser(db, seedUser); err != nil {
+			log.Printf("Failed to seed user %s: %v", seedUser.Email, err)
+		}
+	}
+
+	log.Println("Seeding completed successfully")
 }
 
 // SeedDummyData mengisi data harga pasar dan stok pangan untuk demo
+// SeedDummyData menambahkan contoh data operasional untuk kebutuhan demo atau pengujian.
 func SeedDummyData(db *gorm.DB) {
-	// Skip jika sudah ada data harga
 	var hargaCount int64
 	db.Model(&models.HargaPasar{}).Count(&hargaCount)
 	if hargaCount > 0 {
@@ -142,7 +154,6 @@ func SeedDummyData(db *gorm.DB) {
 		return
 	}
 
-	// Harga dasar (Rp/kg) per komoditas
 	basePrices := map[string]float64{
 		"Beras":         12500,
 		"Jagung":        5500,
@@ -155,7 +166,6 @@ func SeedDummyData(db *gorm.DB) {
 		"Telur Ayam":    27000,
 	}
 
-	// Variasi harga harian per komoditas (supaya grafik terlihat dinamis)
 	dailyDelta := map[string][]float64{
 		"Beras":         {0.0, +200, -100, +150, -50, +300, -200},
 		"Jagung":        {0.0, -100, +200, -150, +100, -200, +250},
@@ -168,7 +178,6 @@ func SeedDummyData(db *gorm.DB) {
 		"Telur Ayam":    {0.0, +300, -200, +400, -300, +500, -200},
 	}
 
-	// Seed 30 hari harga pasar
 	now := time.Now()
 	rng := rand.New(rand.NewSource(42))
 	for _, kec := range kecamatanList {
@@ -184,7 +193,6 @@ func SeedDummyData(db *gorm.DB) {
 				if day < len(deltas) {
 					running += deltas[day]
 				}
-				// Tambah noise kecil Â±1% per kecamatan
 				noise := (rng.Float64()*0.02 - 0.01) * base
 				harga := running + noise
 				if harga < base*0.7 {
@@ -200,9 +208,8 @@ func SeedDummyData(db *gorm.DB) {
 			}
 		}
 	}
-	log.Printf("âœ“ Harga pasar: 30 hari Ã— %d komoditas Ã— %d kecamatan", len(komoditasList), len(kecamatanList))
+	log.Printf("Harga pasar seeded untuk %d komoditas dan %d kecamatan", len(komoditasList), len(kecamatanList))
 
-	// Stok level per kecamatan (supaya terlihat kondisi beragam)
 	stokLevel := []float64{0.85, 0.22, 0.60, 0.78, 0.35, 0.72, 0.18, 0.67, 0.45, 0.28}
 	for i, kec := range kecamatanList {
 		level := stokLevel[i%len(stokLevel)]
@@ -218,20 +225,78 @@ func SeedDummyData(db *gorm.DB) {
 			})
 		}
 	}
-	log.Printf("âœ“ Stok pangan: %d komoditas Ã— %d kecamatan", len(komoditasList), len(kecamatanList))
+	log.Printf("Stok pangan seeded untuk %d komoditas dan %d kecamatan", len(komoditasList), len(kecamatanList))
 
-	// Beberapa laporan darurat
 	var kec0, kec1 models.Kecamatan
 	db.Where("nama = ?", "Babat").First(&kec0)
 	db.Where("nama = ?", "Tikung").First(&kec1)
+
 	laporanList := []models.LaporanDarurat{
 		{PelaporID: admin.ID, KecamatanID: kec0.ID, JenisMasalah: "Kelangkaan Beras", Deskripsi: "Stok beras habis di pasar Babat", Status: "baru", Prioritas: 1},
 		{PelaporID: admin.ID, KecamatanID: kec1.ID, JenisMasalah: "Kenaikan Harga Cabai", Deskripsi: "Harga cabai naik drastis melebihi 50%", Status: "proses", Prioritas: 2},
 		{PelaporID: admin.ID, KecamatanID: kec0.ID, JenisMasalah: "Distribusi Terlambat", Deskripsi: "Distribusi jagung ke gudang terlambat 3 hari", Status: "selesai", Prioritas: 3},
 	}
-	for _, lap := range laporanList {
-		db.Create(&lap)
+	for _, laporan := range laporanList {
+		db.Create(&laporan)
 	}
-	log.Println("âœ“ Laporan darurat dummy berhasil dibuat")
-	log.Println("âœ“ Dummy data seeding selesai")
+
+	log.Println("Laporan darurat dummy berhasil dibuat")
+	log.Println("Dummy data seeding selesai")
+}
+
+func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
+	hashedPassword, err := security.HashPassword(def.PasswordPlain)
+	if err != nil {
+		return err
+	}
+
+	var kecamatanID *uuid.UUID
+	if def.KecamatanName != "" {
+		var kecamatan models.Kecamatan
+		if err := db.Where("nama = ?", def.KecamatanName).First(&kecamatan).Error; err == nil {
+			kecamatanID = &kecamatan.ID
+		}
+	}
+
+	var user models.User
+	err = db.Where("email = ?", def.Email).First(&user).Error
+	if err == nil {
+		updates := map[string]interface{}{
+			"name":      def.Name,
+			"phone":     def.Phone,
+			"role":      def.Role,
+			"password":  hashedPassword,
+			"is_active": true,
+		}
+		if kecamatanID != nil {
+			updates["kecamatan_id"] = *kecamatanID
+		}
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
+			return err
+		}
+		log.Printf("Seed user updated: %s (%s)", def.Email, def.Role)
+		return nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	user = models.User{
+		Name:     def.Name,
+		Email:    def.Email,
+		Password: hashedPassword,
+		Phone:    def.Phone,
+		Role:     def.Role,
+		IsActive: true,
+	}
+	if kecamatanID != nil {
+		user.KecamatanID = kecamatanID
+	}
+
+	if err := db.Create(&user).Error; err != nil {
+		return err
+	}
+
+	log.Printf("Seed user created: %s (%s)", def.Email, def.Role)
+	return nil
 }

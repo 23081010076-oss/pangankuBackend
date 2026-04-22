@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/algorithms/price_forecast.go
+// Bagian: algorithm
+// File: price_forecast
+// Fungsi utama: File ini berisi logika perhitungan atau algoritma pendukung fitur aplikasi.
 package algorithms
 
 import (
@@ -141,3 +146,4 @@ func Forecast(prices []float64) ForecastResult {
 		Anomalies:   DetectAnomalies(prices),
 	}
 }
+

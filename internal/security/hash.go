@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/hash.go
+// Bagian: security
+// File: hash
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security
 
 import (
@@ -79,3 +84,4 @@ func GenerateRefreshToken() (string, error) {
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
 }
+

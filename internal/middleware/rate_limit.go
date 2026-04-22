@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/middleware/rate_limit.go
+// Bagian: middleware
+// File: rate_limit
+// Fungsi utama: File ini menyisipkan pemeriksaan atau aturan tambahan pada request sebelum masuk handler.
 package middleware
 
 import (
@@ -11,13 +16,14 @@ import (
 )
 
 // RateLimit middleware untuk membatasi request berdasarkan IP dan path
+// RateLimit membatasi jumlah request per klien dalam jendela waktu tertentu untuk mencegah spam.
 func RateLimit(rdb *redis.Client, maxReq int, windowSec int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := context.Background()
-		
+
 		// Key berdasarkan IP dan path
 		key := fmt.Sprintf("ratelimit:%s:%s", c.ClientIP(), c.FullPath())
-		
+
 		// Increment counter
 		count, err := rdb.Incr(ctx, key).Result()
 		if err != nil {

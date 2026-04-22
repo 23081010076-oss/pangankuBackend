@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/algorithms/distribution.go
+// Bagian: algorithm
+// File: distribution
+// Fungsi utama: File ini berisi logika perhitungan atau algoritma pendukung fitur aplikasi.
 package algorithms
 
 import (
@@ -152,7 +157,7 @@ type Alokasi struct {
 }
 
 // GreedyAllocate alokasi stok dari kecamatan surplus ke kecamatan defisit
-// Kompleksitas: O(n² log n)
+// Kompleksitas: O(nÂ² log n)
 func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 	var surplus, defisit []StokInfo
 	
@@ -239,3 +244,4 @@ func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 
 	return hasil
 }
+

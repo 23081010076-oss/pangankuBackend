@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/crypto.go
+// Bagian: security
+// File: crypto
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security
 
 import (
@@ -99,3 +104,4 @@ func DecryptAES256(encoded string) (string, error) {
 
 	return string(plaintext), nil
 }
+

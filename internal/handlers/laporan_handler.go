@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/laporan_handler.go
+// Bagian: handler
+// File: laporan_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -17,16 +22,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type LaporanHandler struct {
 	db  *gorm.DB
 	rdb *redis.Client
 	tg  *TelegramHandler
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewLaporanHandler(db *gorm.DB, rdb *redis.Client, tg *TelegramHandler) *LaporanHandler {
 	return &LaporanHandler{db: db, rdb: rdb, tg: tg}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type CreateLaporanRequest struct {
 	KecamatanID  string `json:"kecamatan_id" binding:"required,uuid"`
 	JenisMasalah string `json:"jenis_masalah" binding:"required"`
@@ -35,11 +43,13 @@ type CreateLaporanRequest struct {
 	FotoURL      string `json:"foto_url"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type UpdateLaporanStatusRequest struct {
 	Status string `json:"status" binding:"required,oneof=baru proses selesai"`
 }
 
 // GetLaporan - GET /api/v1/laporan
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *LaporanHandler) GetLaporan(c *gin.Context) {
 	kecamatanID := c.Query("kecamatan_id")
 	status := c.Query("status")
@@ -95,6 +105,7 @@ func (h *LaporanHandler) GetLaporan(c *gin.Context) {
 }
 
 // GetLaporanByID - GET /api/v1/laporan/:id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *LaporanHandler) GetLaporanByID(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -132,6 +143,7 @@ func (h *LaporanHandler) GetLaporanByID(c *gin.Context) {
 }
 
 // CreateLaporan - POST /api/v1/laporan
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 	var req CreateLaporanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,7 +222,7 @@ func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 			chatIDStr := os.Getenv("TELEGRAM_CHAT_ID")
 			if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil && chatID != 0 {
 				msgText := fmt.Sprintf(
-					"🚨 <b>LAPORAN DARURAT BARU!</b> 🚨\n\n📍 <b>Kecamatan:</b> %s\n🛑 <b>Jenis Masalah:</b> %s\n⚠️ <b>Prioritas:</b> %d\n📝 <b>Deskripsi:</b> %s",
+					"ðŸš¨ <b>LAPORAN DARURAT BARU!</b> ðŸš¨\n\nðŸ“ <b>Kecamatan:</b> %s\nðŸ›‘ <b>Jenis Masalah:</b> %s\nâš ï¸ <b>Prioritas:</b> %d\nðŸ“ <b>Deskripsi:</b> %s",
 					kecName, lap.JenisMasalah, lap.Prioritas, deskripsi,
 				)
 				h.tg.SendBroadcastMessage(context.Background(), chatID, msgText)
@@ -224,6 +236,7 @@ func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 }
 
 // UpdateLaporanStatus - PUT /api/v1/laporan/:id/status
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *LaporanHandler) UpdateLaporanStatus(c *gin.Context) {
 	role := middleware.GetRole(c)
 	if role != "admin" && role != "petugas" {
@@ -257,6 +270,18 @@ func (h *LaporanHandler) UpdateLaporanStatus(c *gin.Context) {
 
 	h.db.Model(&laporan).Updates(updates)
 
+	// Kirim notifikasi jika status diubah ke selesai
+	if req.Status == "selesai" {
+		go func(pelaporID uuid.UUID, jenis string) {
+			h.db.Create(&models.Notifikasi{
+				UserID: pelaporID,
+				Judul:  "Laporan Telah Selesai",
+				Isi:    fmt.Sprintf("Laporan darurat Anda terkait '%s' telah ditangani dan dinyatakan selesai.", jenis),
+				Tipe:   "success",
+			})
+		}(laporan.PelaporID, laporan.JenisMasalah)
+	}
+
 	// Audit log
 	go func() {
 		userID := middleware.GetUserID(c)
@@ -274,6 +299,7 @@ func (h *LaporanHandler) UpdateLaporanStatus(c *gin.Context) {
 }
 
 // DeleteLaporan - DELETE /api/v1/laporan/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *LaporanHandler) DeleteLaporan(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -313,6 +339,7 @@ func (h *LaporanHandler) DeleteLaporan(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Laporan berhasil dihapus"})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *LaporanHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/laporan", h.GetLaporan)
 	r.GET("/laporan/:id", h.GetLaporanByID)
@@ -320,4 +347,3 @@ func (h *LaporanHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/laporan/:id/status", h.UpdateLaporanStatus)
 	r.DELETE("/laporan/:id", h.DeleteLaporan)
 }
-

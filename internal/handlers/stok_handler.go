@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/stok_handler.go
+// Bagian: handler
+// File: stok_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -11,14 +16,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type StokHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewStokHandler(db *gorm.DB) *StokHandler {
 	return &StokHandler{db: db}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type StokRequest struct {
 	KomoditasID string  `json:"komoditas_id" binding:"required,uuid"`
 	KecamatanID string  `json:"kecamatan_id" binding:"required,uuid"`
@@ -48,6 +56,7 @@ func hitungStatusStok(stokKg, kapasitasKg float64) string {
 }
 
 // GetStok - GET /api/v1/stok
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *StokHandler) GetStok(c *gin.Context) {
 	komoditasID := c.Query("komoditas_id")
 	kecamatanID := c.Query("kecamatan_id")
@@ -121,6 +130,7 @@ func (h *StokHandler) GetStok(c *gin.Context) {
 }
 
 // GetStokByKecamatan - GET /api/v1/stok/kecamatan/:id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *StokHandler) GetStokByKecamatan(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -157,6 +167,7 @@ func (h *StokHandler) GetStokByKecamatan(c *gin.Context) {
 }
 
 // CreateOrUpdateStok - POST /api/v1/stok
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *StokHandler) CreateOrUpdateStok(c *gin.Context) {
 	var req StokRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -231,12 +242,14 @@ func (h *StokHandler) CreateOrUpdateStok(c *gin.Context) {
 	})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *StokHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/stok", h.GetStok)
 	r.GET("/stok/kecamatan/:id", h.GetStokByKecamatan)
 }
 
 // DeleteStok - DELETE /api/v1/stok/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *StokHandler) DeleteStok(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {

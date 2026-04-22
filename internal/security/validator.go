@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/validator.go
+// Bagian: security
+// File: validator
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security
 
 import (
@@ -51,3 +56,4 @@ func SanitizeString(input string) string {
 	
 	return s
 }
+

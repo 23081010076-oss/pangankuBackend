@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/crypto_test.go
+// Bagian: security
+// File: crypto_test
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security_test
 
 import (
@@ -155,3 +160,4 @@ func TestSanitizeString(t *testing.T) {
 		}
 	}
 }
+

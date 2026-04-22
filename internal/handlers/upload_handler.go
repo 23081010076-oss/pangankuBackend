@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/upload_handler.go
+// Bagian: handler
+// File: upload_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -9,17 +14,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type UploadHandler struct{}
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewUploadHandler() *UploadHandler {
 	return &UploadHandler{}
 }
 
 // UploadFoto - POST /api/v1/upload/foto
+// Handler ini menerima file upload lalu memproses atau menyimpannya.
 func (h *UploadHandler) UploadFoto(c *gin.Context) {
 	// Batasi ukuran file 5MB
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 5<<20)
-	
+
 	if err := c.Request.ParseMultipartForm(5 << 20); err != nil {
 		c.JSON(400, gin.H{"error": "Ukuran file maksimal 5MB"})
 		return
@@ -41,7 +49,7 @@ func (h *UploadHandler) UploadFoto(c *gin.Context) {
 
 	// Deteksi content type
 	contentType := http.DetectContentType(buffer)
-	
+
 	// Whitelist tipe file yang diizinkan
 	allowed := map[string]string{
 		"image/jpeg": ".jpg",
@@ -93,6 +101,7 @@ func (h *UploadHandler) UploadFoto(c *gin.Context) {
 }
 
 // RegisterRoutes mendaftarkan route upload
+// Handler ini menangani proses pendaftaran user baru.
 func (h *UploadHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/upload/foto", h.UploadFoto)
 }

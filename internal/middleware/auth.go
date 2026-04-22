@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/middleware/auth.go
+// Bagian: middleware
+// File: auth
+// Fungsi utama: File ini menyisipkan pemeriksaan atau aturan tambahan pada request sebelum masuk handler.
 package middleware
 
 import (
@@ -9,7 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// JWTAuth middleware untuk validasi JWT token
+// JWTAuth memeriksa token login, memastikan token valid, lalu menyimpan info user ke context.
 func JWTAuth(redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Ambil token dari header Authorization
@@ -52,15 +57,17 @@ func JWTAuth(redisClient *redis.Client) gin.HandlerFunc {
 	}
 }
 
-// Helper functions untuk mengambil user info dari context
+// GetUserID mengambil ID user yang sebelumnya disimpan middleware auth.
 func GetUserID(c *gin.Context) string {
 	return c.GetString("user_id")
 }
 
+// GetEmail mengambil email user dari context request aktif.
 func GetEmail(c *gin.Context) string {
 	return c.GetString("email")
 }
 
+// GetRole mengambil role user dari context agar handler mudah mengecek hak akses.
 func GetRole(c *gin.Context) string {
 	return c.GetString("role")
 }

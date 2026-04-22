@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/middleware/cors.go
+// Bagian: middleware
+// File: cors
+// Fungsi utama: File ini menyisipkan pemeriksaan atau aturan tambahan pada request sebelum masuk handler.
 package middleware
 
 import (
@@ -5,6 +10,7 @@ import (
 )
 
 // CORS middleware untuk mengizinkan request dari frontend
+// CORS menambahkan header agar frontend bisa mengakses backend dari origin yang diizinkan.
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

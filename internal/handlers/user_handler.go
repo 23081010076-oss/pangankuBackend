@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/user_handler.go
+// Bagian: handler
+// File: user_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -12,26 +17,31 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type UserHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewUserHandler(db *gorm.DB) *UserHandler {
 	return &UserHandler{db: db}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type UpdateProfileRequest struct {
 	Name        string  `json:"name"`
 	Phone       string  `json:"phone"`
 	KecamatanID *string `json:"kecamatan_id"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type ChangePasswordRequest struct {
 	PasswordLama string `json:"password_lama" binding:"required"`
 	PasswordBaru string `json:"password_baru" binding:"required"`
 }
 
 // GetProfile - GET /api/v1/users/profile
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -59,6 +69,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 }
 
 // UpdateProfile - PUT /api/v1/users/profile
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -123,6 +134,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 }
 
 // ChangePassword - PUT /api/v1/users/change-password
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -163,6 +175,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 }
 
 // GetAllUsers - GET /api/v1/users (admin only)
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
 	page := 1
 	limit := 20
@@ -181,7 +194,7 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 		query = query.Where("role = ?", role)
 	}
 	if search := c.Query("search"); search != "" {
-		query = query.Where("name ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%")
+		query = query.Where("LOWER(name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?)", "%"+search+"%", "%"+search+"%")
 	}
 
 	query.Count(&total)
@@ -196,6 +209,7 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 }
 
 // UpdateUserRole - PUT /api/v1/users/:id/role (admin only)
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *UserHandler) UpdateUserRole(c *gin.Context) {
 	id := c.Param("id")
 	if !security.ValidateUUID(id) {
@@ -211,7 +225,7 @@ func (h *UserHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	validRoles := map[string]bool{"admin": true, "petugas": true, "petani": true, "pedagang": true, "publik": true}
+	validRoles := map[string]bool{"admin": true, "petugas": true, "petani": true}
 	if !validRoles[req.Role] {
 		c.JSON(400, gin.H{"error": "Role tidak valid"})
 		return
@@ -230,12 +244,14 @@ func (h *UserHandler) UpdateUserRole(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Role berhasil diupdate"})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/users/profile", h.GetProfile)
 	r.PUT("/users/profile", h.UpdateProfile)
 	r.PUT("/users/change-password", h.ChangePassword)
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *UserHandler) RegisterAdminRoutes(r *gin.RouterGroup) {
 	r.GET("/users", h.GetAllUsers)
 	r.PUT("/users/:id/role", h.UpdateUserRole)

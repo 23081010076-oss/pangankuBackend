@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/harga_handler.go
+// Bagian: handler
+// File: harga_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -17,11 +22,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type HargaHandler struct {
 	db  *gorm.DB
 	rdb *redis.Client
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewHargaHandler(db *gorm.DB, rdb *redis.Client) *HargaHandler {
 	return &HargaHandler{db: db, rdb: rdb}
 }
@@ -43,6 +50,7 @@ func (f *FlexibleDate) UnmarshalJSON(data []byte) error {
 	return errors.New("format tanggal tidak valid, gunakan YYYY-MM-DD atau RFC3339")
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type CreateHargaRequest struct {
 	KomoditasID string       `json:"komoditas_id" binding:"required,uuid"`
 	KecamatanID string       `json:"kecamatan_id" binding:"required,uuid"`
@@ -50,6 +58,7 @@ type CreateHargaRequest struct {
 	Tanggal     FlexibleDate `json:"tanggal" binding:"required"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type UpdateHargaRequest struct {
 	HargaPerKg float64      `json:"harga_per_kg" binding:"required,gt=0"`
 	Tanggal    FlexibleDate `json:"tanggal" binding:"required"`
@@ -75,6 +84,7 @@ type TrendData struct {
 }
 
 // GetHarga - GET /api/v1/harga
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *HargaHandler) GetHarga(c *gin.Context) {
 	komoditasID := c.Query("komoditas_id")
 	kecamatanID := c.Query("kecamatan_id")
@@ -125,6 +135,7 @@ func (h *HargaHandler) GetHarga(c *gin.Context) {
 }
 
 // GetLatest - GET /api/v1/harga/latest
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *HargaHandler) GetLatest(c *gin.Context) {
 	ctx := context.Background()
 	mode := c.DefaultQuery("mode", "agregat")
@@ -219,7 +230,7 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			), prev_avg AS (
 				SELECT ld.komoditas_id, AVG(h.harga_per_kg) AS prev_harga
 				FROM latest_date ld
-				LEFT JOIN harga_pasars h ON h.komoditas_id = ld.komoditas_id AND DATE(h.tanggal) = ld.tgl - INTERVAL '1 day'
+				LEFT JOIN harga_pasars h ON h.komoditas_id = ld.komoditas_id AND DATE(h.tanggal) = DATE_SUB(ld.tgl, INTERVAL 1 DAY)
 				GROUP BY ld.komoditas_id
 			)
 			SELECT la.komoditas_id, la.komoditas_nama, la.avg_harga AS harga_per_kg,
@@ -264,6 +275,7 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 }
 
 // GetTrend - GET /api/v1/harga/trend/:komoditas_id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *HargaHandler) GetTrend(c *gin.Context) {
 	komoditasID := c.Param("komoditas_id")
 	kecamatanID := c.Query("kecamatan_id")
@@ -334,6 +346,7 @@ func (h *HargaHandler) GetTrend(c *gin.Context) {
 }
 
 // CreateHarga - POST /api/v1/harga
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *HargaHandler) CreateHarga(c *gin.Context) {
 	var req CreateHargaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -400,6 +413,7 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 }
 
 // UpdateHarga - PUT /api/v1/harga/:id
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *HargaHandler) UpdateHarga(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -424,9 +438,9 @@ func (h *HargaHandler) UpdateHarga(c *gin.Context) {
 		return
 	}
 
-	// Pedagang/petani hanya boleh mengubah data harga miliknya sendiri.
+	// Petani hanya boleh mengubah data harga miliknya sendiri.
 	role := middleware.GetRole(c)
-	if role == "pedagang" || role == "petani" {
+	if role == "petani" {
 		uid, err := uuid.Parse(middleware.GetUserID(c))
 		if err != nil {
 			c.JSON(401, gin.H{"error": "User tidak valid"})
@@ -463,6 +477,7 @@ func (h *HargaHandler) UpdateHarga(c *gin.Context) {
 }
 
 // DeleteHarga - DELETE /api/v1/harga/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *HargaHandler) DeleteHarga(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -500,6 +515,7 @@ func (h *HargaHandler) DeleteHarga(c *gin.Context) {
 }
 
 // GetForecast - GET /api/v1/harga/forecast
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *HargaHandler) GetForecast(c *gin.Context) {
 	komoditasID := c.Query("komoditas_id")
 	kecamatanID := c.Query("kecamatan_id")
@@ -556,6 +572,7 @@ func (h *HargaHandler) GetForecast(c *gin.Context) {
 }
 
 // checkAnomalyAndNotify cek apakah harga anomali
+// Handler ini menjalankan logika endpoint sesuai kebutuhan fitur pada request yang masuk.
 func (h *HargaHandler) checkAnomalyAndNotify(komoditasID, kecamatanID string, hargaBaru float64, namaKomoditas, namaKecamatan string) {
 	// Hitung rata-rata 7 hari terakhir
 	var avg float64
@@ -581,6 +598,7 @@ func (h *HargaHandler) checkAnomalyAndNotify(komoditasID, kecamatanID string, ha
 }
 
 // RegisterRoutes mendaftarkan semua route harga
+// Handler ini menangani proses pendaftaran user baru.
 func (h *HargaHandler) RegisterRoutes(r *gin.RouterGroup) {
 	harga := r.Group("/harga")
 	{
@@ -588,8 +606,8 @@ func (h *HargaHandler) RegisterRoutes(r *gin.RouterGroup) {
 		harga.GET("/latest", h.GetLatest)
 		harga.GET("/trend/:komoditas_id", h.GetTrend)
 		harga.GET("/forecast", h.GetForecast)
-		harga.POST("", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani", "pedagang"), h.CreateHarga)
-		harga.PUT("/:id", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani", "pedagang"), h.UpdateHarga)
+		harga.POST("", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani"), h.CreateHarga)
+		harga.PUT("/:id", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas", "petani"), h.UpdateHarga)
 		harga.DELETE("/:id", middleware.JWTAuth(h.rdb), middleware.RequireRole("admin", "petugas"), h.DeleteHarga)
 	}
 }

@@ -1,3 +1,8 @@
+// Penjelasan file:
+// Lokasi: internal/handlers/distribusi_handler.go
+// Bagian: handler
+// File: distribusi_handler
+// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
 package handlers
 
 import (
@@ -12,14 +17,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type DistribusiHandler struct {
 	db *gorm.DB
 }
 
+// Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
 func NewDistribusiHandler(db *gorm.DB) *DistribusiHandler {
 	return &DistribusiHandler{db: db}
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type CreateDistribusiRequest struct {
 	DariKecamatanID string    `json:"dari_kecamatan_id" binding:"required,uuid"`
 	KeKecamatanID   string    `json:"ke_kecamatan_id" binding:"required,uuid"`
@@ -30,11 +38,13 @@ type CreateDistribusiRequest struct {
 	JadwalBerangkat time.Time `json:"jadwal_berangkat" binding:"required"`
 }
 
+// Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type UpdateDistribusiStatusRequest struct {
-	Status string `json:"status" binding:"required,oneof=terjadwal proses selesai"`
+	Status string `json:"status" binding:"required,oneof=terjadwal dijadwalkan proses selesai batal dibatalkan"`
 }
 
 // GetDistribusi - GET /api/v1/distribusi
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *DistribusiHandler) GetDistribusi(c *gin.Context) {
 	status := c.Query("status")
 	komoditasID := c.Query("komoditas_id")
@@ -64,7 +74,7 @@ func (h *DistribusiHandler) GetDistribusi(c *gin.Context) {
 	query.Count(&total)
 
 	var list []models.Distribusi
-	query.Offset((page-1)*limit).Limit(limit).Order("created_at desc").Find(&list)
+	query.Offset((page - 1) * limit).Limit(limit).Order("created_at desc").Find(&list)
 
 	c.JSON(200, gin.H{
 		"data":  list,
@@ -75,6 +85,7 @@ func (h *DistribusiHandler) GetDistribusi(c *gin.Context) {
 }
 
 // GetDistribusiByID - GET /api/v1/distribusi/:id
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *DistribusiHandler) GetDistribusiByID(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -96,6 +107,7 @@ func (h *DistribusiHandler) GetDistribusiByID(c *gin.Context) {
 }
 
 // CreateDistribusi - POST /api/v1/distribusi
+// Handler ini menerima input dari request lalu membuat data baru di database.
 func (h *DistribusiHandler) CreateDistribusi(c *gin.Context) {
 	var req CreateDistribusiRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -155,6 +167,7 @@ func (h *DistribusiHandler) CreateDistribusi(c *gin.Context) {
 }
 
 // UpdateDistribusiStatus - PUT /api/v1/distribusi/:id/status
+// Handler ini menerima perubahan data dari request lalu memperbaruinya di database.
 func (h *DistribusiHandler) UpdateDistribusiStatus(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -180,6 +193,7 @@ func (h *DistribusiHandler) UpdateDistribusiStatus(c *gin.Context) {
 }
 
 // GetRute - GET /api/v1/distribusi/:id/rute
+// Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *DistribusiHandler) GetRute(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -240,6 +254,7 @@ func (h *DistribusiHandler) GetRute(c *gin.Context) {
 }
 
 // DeleteDistribusi - DELETE /api/v1/distribusi/:id
+// Handler ini menghapus data tertentu berdasarkan parameter request.
 func (h *DistribusiHandler) DeleteDistribusi(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
@@ -255,6 +270,7 @@ func (h *DistribusiHandler) DeleteDistribusi(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Data distribusi berhasil dihapus"})
 }
 
+// Handler ini menangani proses pendaftaran user baru.
 func (h *DistribusiHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/distribusi", h.GetDistribusi)
 	r.GET("/distribusi/:id", h.GetDistribusiByID)

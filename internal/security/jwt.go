@@ -1,3 +1,8 @@
+﻿// Penjelasan file:
+// Lokasi: internal/security/jwt.go
+// Bagian: security
+// File: jwt
+// Fungsi utama: File ini berisi helper keamanan seperti JWT, hash, validasi, atau enkripsi.
 package security
 
 import (
@@ -54,3 +59,4 @@ func ValidateAccessToken(tokenStr string) (*Claims, error) {
 
 	return nil, errors.New("token tidak valid")
 }
+

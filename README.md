@@ -4,7 +4,7 @@ Sistem Informasi Ketahanan Pangan untuk Diskominfo Kabupaten Lamongan.
 
 ## Tech Stack
 
-- **Backend**: Golang 1.21, Gin, GORM, PostgreSQL 15, Redis
+- **Backend**: Golang 1.21, Gin, GORM, MySQL 8, Redis
 - **Security**: JWT, Argon2id, AES-256-GCM
 - **Algorithms**: Dynamic Programming (price prediction), Dijkstra (distribution)
 
@@ -13,7 +13,7 @@ Sistem Informasi Ketahanan Pangan untuk Diskominfo Kabupaten Lamongan.
 ### Prerequisites
 
 - Go 1.21+
-- PostgreSQL 15+
+- MySQL 8+
 - Redis 7+
 
 ### Setup
@@ -64,7 +64,7 @@ docker-compose up -d
 Ini akan menjalankan:
 
 - API server di port 8080
-- PostgreSQL di port 5432
+- MySQL di port 3306
 - Redis di port 6379
 
 ## API Endpoints
@@ -84,22 +84,6 @@ Ini akan menjalankan:
 - `GET /api/v1/harga/trend/:komoditas_id` - Trend harga (7d/30d/90d)
 - `GET /api/v1/harga/forecast` - Prediksi harga 7 hari ke depan
 - `POST /api/v1/harga` - Tambah data harga (admin/petugas only)
-
-### WhatsApp Input
-
-- `GET /api/v1/whatsapp/help` - Cek status konfigurasi & format pesan WA
-- `GET /api/v1/whatsapp/webhook` - Verifikasi webhook WhatsApp Cloud API
-- `POST /api/v1/whatsapp/webhook` - Terima pesan WhatsApp untuk input data
-
-Format pesan WhatsApp:
-
-- `LAPOR#kecamatan_id#jenis_masalah#deskripsi#prioritas`
-- `HARGA#komoditas_id#kecamatan_id#harga_per_kg#YYYY-MM-DD`
-
-Contoh:
-
-- `LAPOR#d8f2b4a9-7abc-4c07-9d27-6a1a78f77d55#Kekurangan Beras#Stok menipis 2 hari terakhir#4`
-- `HARGA#8c154040-3bb2-4971-ac9c-1b985e7d6d4f#d8f2b4a9-7abc-4c07-9d27-6a1a78f77d55#13500#2026-03-17`
 
 ### Upload
 

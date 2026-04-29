@@ -1,4 +1,4 @@
-﻿// Penjelasan file:
+// Penjelasan file:
 // Lokasi: internal/security/validator.go
 // Bagian: security
 // File: validator
@@ -10,11 +10,12 @@ import (
 	"html"
 	"regexp"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 var (
 	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
-	uuidRegex  = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 )
 
 // ValidateEmail memvalidasi format email
@@ -43,17 +44,17 @@ func ValidatePassword(password string) error {
 
 // ValidateUUID memvalidasi format UUID
 func ValidateUUID(id string) bool {
-	return uuidRegex.MatchString(strings.ToLower(id))
+	_, err := uuid.Parse(strings.TrimSpace(id))
+	return err == nil
 }
 
 // SanitizeString membersihkan string dari HTML/script injection
 func SanitizeString(input string) string {
 	// Trim whitespace
 	s := strings.TrimSpace(input)
-	
+
 	// Escape HTML entities
 	s = html.EscapeString(s)
-	
+
 	return s
 }
-

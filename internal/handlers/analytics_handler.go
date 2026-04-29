@@ -2,7 +2,12 @@
 // Lokasi: internal/handlers/analytics_handler.go
 // Bagian: handler
 // File: analytics_handler
-// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
+// Fungsi utama: Menangani request HTTP analytics/dashboard dan menyusun response ringkasan pangan.
+// Dipakai oleh: Router analytics dan aplikasi mobile dashboard/analitik.
+// Dependensi utama: Gin, Gorm DB, models komoditas/harga/stok/laporan/luas lahan/kecamatan.
+// Fungsi public/utama: AnalyticsHandler, NewAnalyticsHandler, GetDashboard, GetStatusPangan, RegisterAnalyticsRoutes.
+// Side effect penting: DB read agregasi dashboard; tidak melakukan DB write.
+// Catatan: Response dashboard membawa gambar_url dan detail luas_lahan_by_kecamatan untuk UI mobile.
 package handlers
 
 import (
@@ -148,16 +153,47 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 	var allKomoditas []models.Komoditas
 	h.db.Find(&allKomoditas)
 
+	type luasLahanKecamatan struct {
+		KecamatanID   string  `json:"kecamatan_id"`
+		KecamatanNama string  `json:"kecamatan_nama"`
+		LuasHa        float64 `json:"luas_ha"`
+	}
 	type KomoditasTrend struct {
-		ID          string    `json:"id"`
-		Nama        string    `json:"nama"`
-		AvgHarga    float64   `json:"avg_harga"`
-		TotalStok   float64   `json:"total_stok"`
-		LuasLahan   float64   `json:"luas_lahan"`
-		HargaHarian []float64 `json:"harga_harian"`
-		StokHarian  []float64 `json:"stok_harian"`
+		ID                   string               `json:"id"`
+		Nama                 string               `json:"nama"`
+		GambarURL            string               `json:"gambar_url,omitempty"`
+		AvgHarga             float64              `json:"avg_harga"`
+		TotalStok            float64              `json:"total_stok"`
+		LuasLahan            float64              `json:"luas_lahan"`
+		LuasLahanByKecamatan []luasLahanKecamatan `json:"luas_lahan_by_kecamatan"`
+		HargaHarian          []float64            `json:"harga_harian"`
+		StokHarian           []float64            `json:"stok_harian"`
 	}
 	var trenKomoditas []KomoditasTrend
+
+	var luasRows []struct {
+		KomoditasID   string  `gorm:"column:komoditas_id"`
+		KecamatanID   string  `gorm:"column:kecamatan_id"`
+		KecamatanNama string  `gorm:"column:kecamatan_nama"`
+		LuasHa        float64 `gorm:"column:luas_ha"`
+	}
+	h.db.Table("luas_lahans ll").
+		Select("ll.komoditas_id, ll.kecamatan_id, k.nama AS kecamatan_nama, ll.luas_ha").
+		Joins("JOIN kecamatans k ON k.id = ll.kecamatan_id").
+		Where("ll.tahun = ?", currentYear).
+		Order("ll.komoditas_id ASC, ll.luas_ha DESC, k.nama ASC").
+		Scan(&luasRows)
+
+	luasByKomoditas := make(map[string][]luasLahanKecamatan)
+	luasTotalByKomoditas := make(map[string]float64)
+	for _, row := range luasRows {
+		luasByKomoditas[row.KomoditasID] = append(luasByKomoditas[row.KomoditasID], luasLahanKecamatan{
+			KecamatanID:   row.KecamatanID,
+			KecamatanNama: row.KecamatanNama,
+			LuasHa:        row.LuasHa,
+		})
+		luasTotalByKomoditas[row.KomoditasID] += row.LuasHa
+	}
 
 	// Loop semua komoditas lalu hitung rata-rata, harga harian, stok, dan luas lahannya.
 	for _, k := range allKomoditas {
@@ -207,12 +243,8 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		var sumStok float64
 		h.db.Raw("SELECT COALESCE(SUM(stok_kg), 0) FROM stok_pangans WHERE komoditas_id = ?", k.ID.String()).Scan(&sumStok)
 
-		var luasLahanTotal float64
-		h.db.Raw(
-			"SELECT COALESCE(SUM(luas_ha), 0) FROM luas_lahans WHERE komoditas_id = ? AND tahun = ?",
-			k.ID.String(),
-			currentYear,
-		).Scan(&luasLahanTotal)
+		luasLahanDetail := luasByKomoditas[k.ID.String()]
+		luasLahanTotal := luasTotalByKomoditas[k.ID.String()]
 		outStok := make([]float64, days)
 		currStok := sumStok
 		if currStok == 0 {
@@ -226,13 +258,15 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		}
 
 		trenKomoditas = append(trenKomoditas, KomoditasTrend{
-			ID:          k.ID.String(),
-			Nama:        k.Nama,
-			AvgHarga:    avgResult,
-			TotalStok:   sumStok,
-			LuasLahan:   luasLahanTotal,
-			HargaHarian: out,
-			StokHarian:  outStok,
+			ID:                   k.ID.String(),
+			Nama:                 k.Nama,
+			GambarURL:            k.GambarURL,
+			AvgHarga:             avgResult,
+			TotalStok:            sumStok,
+			LuasLahan:            luasLahanTotal,
+			LuasLahanByKecamatan: luasLahanDetail,
+			HargaHarian:          out,
+			StokHarian:           outStok,
 		})
 	}
 

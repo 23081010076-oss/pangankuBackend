@@ -6,7 +6,6 @@
 package middleware
 
 import (
-	"context"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +24,7 @@ func JWTAuth(redisClient *redis.Client) gin.HandlerFunc {
 		}
 
 		// Format: Bearer <token>
-		parts := strings.Split(authHeader, " ")
+		parts := strings.Fields(authHeader)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			c.AbortWithStatusJSON(401, gin.H{"error": "Format token tidak valid"})
 			return
@@ -41,8 +40,12 @@ func JWTAuth(redisClient *redis.Client) gin.HandlerFunc {
 		}
 
 		// Cek blacklist di Redis
-		ctx := context.Background()
-		exists, _ := redisClient.Exists(ctx, "blacklist:"+token).Result()
+		ctx := c.Request.Context()
+		exists, err := redisClient.Exists(ctx, "blacklist:"+token).Result()
+		if err != nil {
+			c.AbortWithStatusJSON(503, gin.H{"error": "Layanan autentikasi belum tersedia"})
+			return
+		}
 		if exists > 0 {
 			c.AbortWithStatusJSON(401, gin.H{"error": "Token sudah tidak aktif"})
 			return

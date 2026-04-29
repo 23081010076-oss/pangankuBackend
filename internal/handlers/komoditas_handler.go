@@ -1,8 +1,9 @@
-// Penjelasan file:
-// Lokasi: internal/handlers/komoditas_handler.go
-// Bagian: handler
-// File: komoditas_handler
-// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
+// Doc:
+// Tujuan: Menangani endpoint CRUD komoditas termasuk penyimpanan metadata gambar komoditas.
+// Dipakai oleh: Router API `/komoditas` untuk halaman admin komoditas dan konsumsi master data mobile.
+// Dependensi utama: Gin, GORM, middleware audit log, model Komoditas dan AuditLog.
+// Fungsi public/utama: NewKomoditasHandler, GetKomoditas, GetKomoditasByID, CreateKomoditas, UpdateKomoditas, DeleteKomoditas, RegisterRoutes.
+// Side effect penting: DB read/write tabel komoditas dan audit_logs; response JSON dipakai UI admin/mobile.
 package handlers
 
 import (
@@ -25,9 +26,10 @@ func NewKomoditasHandler(db *gorm.DB) *KomoditasHandler {
 
 // Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type KomoditasRequest struct {
-	Nama     string `json:"nama" binding:"required"`
-	Satuan   string `json:"satuan"`
-	Kategori string `json:"kategori"`
+	Nama      string `json:"nama" binding:"required"`
+	Satuan    string `json:"satuan"`
+	Kategori  string `json:"kategori"`
+	GambarURL string `json:"gambar_url"`
 }
 
 // GetKomoditas - GET /api/v1/komoditas
@@ -79,9 +81,10 @@ func (h *KomoditasHandler) CreateKomoditas(c *gin.Context) {
 	}
 
 	komoditas := models.Komoditas{
-		Nama:     req.Nama,
-		Satuan:   satuan,
-		Kategori: req.Kategori,
+		Nama:      req.Nama,
+		Satuan:    satuan,
+		Kategori:  req.Kategori,
+		GambarURL: req.GambarURL,
 	}
 
 	if err := h.db.Create(&komoditas).Error; err != nil {
@@ -125,11 +128,25 @@ func (h *KomoditasHandler) UpdateKomoditas(c *gin.Context) {
 		return
 	}
 
-	h.db.Model(&komoditas).Updates(map[string]interface{}{
-		"nama":     req.Nama,
-		"satuan":   req.Satuan,
-		"kategori": req.Kategori,
-	})
+	satuan := req.Satuan
+	if satuan == "" {
+		satuan = "kg"
+	}
+
+	if err := h.db.Model(&komoditas).Updates(map[string]interface{}{
+		"nama":       req.Nama,
+		"satuan":     satuan,
+		"kategori":   req.Kategori,
+		"gambar_url": req.GambarURL,
+	}).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal memperbarui data"})
+		return
+	}
+
+	komoditas.Nama = req.Nama
+	komoditas.Satuan = satuan
+	komoditas.Kategori = req.Kategori
+	komoditas.GambarURL = req.GambarURL
 
 	c.JSON(200, gin.H{"data": komoditas})
 }

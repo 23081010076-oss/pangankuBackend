@@ -74,6 +74,8 @@ type HargaLatest struct {
 	Tanggal       time.Time `json:"tanggal"`
 	PerubahanPct  float64   `json:"perubahan_persen"`
 	Trend         string    `json:"trend"` // NAIK, TURUN, STABIL
+	GambarURL     string    `json:"gambar_url,omitempty"`
+	Kategori      string    `json:"kategori,omitempty"`
 }
 
 type TrendData struct {
@@ -81,6 +83,30 @@ type TrendData struct {
 	Avg     float64 `json:"avg"`
 	Min     float64 `json:"min"`
 	Max     float64 `json:"max"`
+}
+
+func (h *HargaHandler) invalidateHargaCache(ctx context.Context, komoditasID string) {
+	h.deleteCachePattern(ctx, "harga:latest:*")
+	if komoditasID == "" {
+		return
+	}
+	h.deleteCachePattern(ctx, fmt.Sprintf("harga:trend:%s:*", komoditasID))
+	h.deleteCachePattern(ctx, fmt.Sprintf("forecast:%s:*", komoditasID))
+}
+
+func (h *HargaHandler) deleteCachePattern(ctx context.Context, pattern string) {
+	iter := h.rdb.Scan(ctx, 0, pattern, 100).Iterator()
+	keys := make([]string, 0, 100)
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+		if len(keys) >= 100 {
+			h.rdb.Del(ctx, keys...)
+			keys = keys[:0]
+		}
+	}
+	if len(keys) > 0 {
+		h.rdb.Del(ctx, keys...)
+	}
 }
 
 // GetHarga - GET /api/v1/harga
@@ -163,18 +189,31 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			KecamatanNama string
 			HargaPerKg    float64
 			Tanggal       time.Time
+			GambarURL     string
+			Kategori      string
 		}
 
-		h.db.Raw(`
-			SELECT DISTINCT ON (h.komoditas_id)
+		if err := h.db.Raw(`
+			SELECT
 				h.id, h.komoditas_id, k.nama as komoditas_nama,
 				h.kecamatan_id, kc.nama as kecamatan_nama,
-				h.harga_per_kg, h.tanggal
-			FROM harga_pasars h
+				h.harga_per_kg, h.tanggal, k.gambar_url, k.kategori
+			FROM (
+				SELECT hp.*,
+					ROW_NUMBER() OVER (
+						PARTITION BY hp.komoditas_id
+						ORDER BY hp.tanggal DESC, hp.created_at DESC, hp.id DESC
+					) AS rn
+				FROM harga_pasars hp
+			) h
 			JOIN komoditas k ON k.id = h.komoditas_id
 			JOIN kecamatans kc ON kc.id = h.kecamatan_id
-			ORDER BY h.komoditas_id, h.tanggal DESC
-		`).Scan(&rows)
+			WHERE h.rn = 1
+			ORDER BY k.nama ASC
+		`).Scan(&rows).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Gagal mengambil harga terbaru"})
+			return
+		}
 
 		for _, row := range rows {
 			var kemarin models.HargaPasar
@@ -203,6 +242,8 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 				Tanggal:       row.Tanggal,
 				PerubahanPct:  perubahan,
 				Trend:         trend,
+				GambarURL:     row.GambarURL,
+				Kategori:      row.Kategori,
 			})
 		}
 	} else {
@@ -213,32 +254,37 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			HargaPerKg    float64
 			Tanggal       time.Time
 			PrevHarga     float64
+			GambarURL     string
+			Kategori      string
 		}
 
-		h.db.Raw(`
+		if err := h.db.Raw(`
 			WITH latest_date AS (
 				SELECT komoditas_id, MAX(DATE(tanggal)) AS tgl
 				FROM harga_pasars
 				GROUP BY komoditas_id
 			), latest_avg AS (
-				SELECT h.komoditas_id, k.nama AS komoditas_nama, ld.tgl,
+				SELECT h.komoditas_id, k.nama AS komoditas_nama, k.gambar_url, k.kategori, ld.tgl,
 					AVG(h.harga_per_kg) AS avg_harga
 				FROM harga_pasars h
 				JOIN latest_date ld ON ld.komoditas_id = h.komoditas_id AND DATE(h.tanggal) = ld.tgl
 				JOIN komoditas k ON k.id = h.komoditas_id
-				GROUP BY h.komoditas_id, k.nama, ld.tgl
+				GROUP BY h.komoditas_id, k.nama, k.gambar_url, k.kategori, ld.tgl
 			), prev_avg AS (
 				SELECT ld.komoditas_id, AVG(h.harga_per_kg) AS prev_harga
 				FROM latest_date ld
 				LEFT JOIN harga_pasars h ON h.komoditas_id = ld.komoditas_id AND DATE(h.tanggal) = DATE_SUB(ld.tgl, INTERVAL 1 DAY)
 				GROUP BY ld.komoditas_id
 			)
-			SELECT la.komoditas_id, la.komoditas_nama, la.avg_harga AS harga_per_kg,
+			SELECT la.komoditas_id, la.komoditas_nama, la.gambar_url, la.kategori, la.avg_harga AS harga_per_kg,
 				la.tgl AS tanggal, COALESCE(pa.prev_harga, 0) AS prev_harga
 			FROM latest_avg la
 			LEFT JOIN prev_avg pa ON pa.komoditas_id = la.komoditas_id
 			ORDER BY la.komoditas_nama ASC
-		`).Scan(&rows)
+		`).Scan(&rows).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Gagal mengambil harga terbaru"})
+			return
+		}
 
 		for _, row := range rows {
 			perubahan := 0.0
@@ -262,6 +308,8 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 				Tanggal:       row.Tanggal,
 				PerubahanPct:  perubahan,
 				Trend:         trend,
+				GambarURL:     row.GambarURL,
+				Kategori:      row.Kategori,
 			})
 		}
 	}
@@ -304,7 +352,7 @@ func (h *HargaHandler) GetTrend(c *gin.Context) {
 	tanggalMulai := time.Now().AddDate(0, 0, -days)
 
 	ctx := context.Background()
-	cacheKey := fmt.Sprintf("harga:trend:%s:%s", komoditasID, periode)
+	cacheKey := fmt.Sprintf("harga:trend:%s:%s:%s", komoditasID, kecamatanID, periode)
 
 	// Cek cache
 	cached, err := h.rdb.Get(ctx, cacheKey).Result()
@@ -335,7 +383,10 @@ func (h *HargaHandler) GetTrend(c *gin.Context) {
 	}
 
 	query += " GROUP BY DATE(tanggal) ORDER BY tanggal ASC"
-	h.db.Raw(query, args...).Scan(&rows)
+	if err := h.db.Raw(query, args...).Scan(&rows).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mengambil tren harga"})
+		return
+	}
 
 	// Cache selama 30 menit
 	if data, err := json.Marshal(rows); err == nil {
@@ -374,10 +425,16 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 	}
 
 	// Buat record harga
-	createdBy, _ := uuid.Parse(middleware.GetUserID(c))
+	createdBy, err := uuid.Parse(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(401, gin.H{"error": "User tidak valid"})
+		return
+	}
+	komoditasUUID := uuid.MustParse(req.KomoditasID)
+	kecamatanUUID := uuid.MustParse(req.KecamatanID)
 	harga := models.HargaPasar{
-		KomoditasID: uuid.MustParse(req.KomoditasID),
-		KecamatanID: uuid.MustParse(req.KecamatanID),
+		KomoditasID: komoditasUUID,
+		KecamatanID: kecamatanUUID,
 		HargaPerKg:  req.HargaPerKg,
 		Tanggal:     req.Tanggal.Time,
 		CreatedBy:   createdBy,
@@ -389,20 +446,21 @@ func (h *HargaHandler) CreateHarga(c *gin.Context) {
 	}
 
 	// Invalidate cache
-	ctx := context.Background()
-	h.rdb.Del(ctx, "harga:latest")
-	h.rdb.Del(ctx, fmt.Sprintf("harga:trend:%s:*", req.KomoditasID))
+	ctx := c.Request.Context()
+	h.invalidateHargaCache(ctx, req.KomoditasID)
 
 	// Cek anomali harga (async)
 	go h.checkAnomalyAndNotify(req.KomoditasID, req.KecamatanID, req.HargaPerKg, komoditas.Nama, kecamatan.Nama)
 
 	// Audit log
+	resource := c.FullPath()
+	clientIP := c.ClientIP()
 	go func() {
 		h.db.Create(&models.AuditLog{
 			UserID:    createdBy,
 			Action:    "CREATE",
-			Resource:  c.FullPath(),
-			IPAddress: c.ClientIP(),
+			Resource:  resource,
+			IPAddress: clientIP,
 		})
 	}()
 
@@ -452,22 +510,27 @@ func (h *HargaHandler) UpdateHarga(c *gin.Context) {
 		}
 	}
 
-	h.db.Model(&harga).Updates(map[string]interface{}{
+	if err := h.db.Model(&harga).Updates(map[string]interface{}{
 		"harga_per_kg": req.HargaPerKg,
 		"tanggal":      req.Tanggal.Time,
-	})
+	}).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal memperbarui data harga"})
+		return
+	}
 
-	ctx := context.Background()
-	h.rdb.Del(ctx, "harga:latest")
-	h.rdb.Del(ctx, fmt.Sprintf("harga:trend:%s:*", harga.KomoditasID.String()))
+	ctx := c.Request.Context()
+	h.invalidateHargaCache(ctx, harga.KomoditasID.String())
 
+	resource := c.FullPath()
+	clientIP := c.ClientIP()
+	userID := middleware.GetUserID(c)
 	go func() {
-		if uid, err := uuid.Parse(middleware.GetUserID(c)); err == nil {
+		if uid, err := uuid.Parse(userID); err == nil {
 			h.db.Create(&models.AuditLog{
 				UserID:    uid,
 				Action:    "UPDATE",
-				Resource:  c.FullPath(),
-				IPAddress: c.ClientIP(),
+				Resource:  resource,
+				IPAddress: clientIP,
 			})
 		}
 	}()
@@ -496,17 +559,19 @@ func (h *HargaHandler) DeleteHarga(c *gin.Context) {
 		return
 	}
 
-	ctx := context.Background()
-	h.rdb.Del(ctx, "harga:latest")
-	h.rdb.Del(ctx, fmt.Sprintf("harga:trend:%s:*", harga.KomoditasID.String()))
+	ctx := c.Request.Context()
+	h.invalidateHargaCache(ctx, harga.KomoditasID.String())
 
+	resource := c.FullPath()
+	clientIP := c.ClientIP()
+	userID := middleware.GetUserID(c)
 	go func() {
-		if uid, err := uuid.Parse(middleware.GetUserID(c)); err == nil {
+		if uid, err := uuid.Parse(userID); err == nil {
 			h.db.Create(&models.AuditLog{
 				UserID:    uid,
 				Action:    "DELETE",
-				Resource:  c.FullPath(),
-				IPAddress: c.ClientIP(),
+				Resource:  resource,
+				IPAddress: clientIP,
 			})
 		}
 	}()
@@ -591,9 +656,14 @@ func (h *HargaHandler) checkAnomalyAndNotify(komoditasID, kecamatanID string, ha
 		message := fmt.Sprintf("Harga %s di %s anomali: Rp%.0f (rata-rata 7 hari: Rp%.0f)",
 			namaKomoditas, namaKecamatan, hargaBaru, avg)
 
-		// TODO: Simpan ke tabel notifikasi
-		// Sementara hanya log
-		fmt.Println("ALERT:", message)
+		var recipients []models.User
+		if err := h.db.Where("role IN ? AND is_active = true", []string{"admin", "petugas"}).Find(&recipients).Error; err != nil {
+			fmt.Println("ALERT:", message)
+			return
+		}
+		for _, user := range recipients {
+			SendNotifikasi(h.db, user.ID, "Anomali harga terdeteksi", message, "warning", "/harga")
+		}
 	}
 }
 

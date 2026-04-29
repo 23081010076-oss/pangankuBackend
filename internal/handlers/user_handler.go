@@ -36,8 +36,10 @@ type UpdateProfileRequest struct {
 
 // Struct request ini merepresentasikan data input yang diharapkan dari body request.
 type ChangePasswordRequest struct {
-	PasswordLama string `json:"password_lama" binding:"required"`
-	PasswordBaru string `json:"password_baru" binding:"required"`
+	OldPassword  string `json:"old_password"`
+	NewPassword  string `json:"new_password"`
+	PasswordLama string `json:"password_lama"`
+	PasswordBaru string `json:"password_baru"`
 }
 
 // GetProfile - GET /api/v1/users/profile
@@ -121,6 +123,10 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Gagal mengupdate profil"})
 		return
 	}
+	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mengambil profil terbaru"})
+		return
+	}
 
 	c.JSON(200, gin.H{
 		"id":           user.ID,
@@ -144,7 +150,20 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := security.ValidatePassword(req.PasswordBaru); err != nil {
+	oldPassword := req.OldPassword
+	if oldPassword == "" {
+		oldPassword = req.PasswordLama
+	}
+	newPassword := req.NewPassword
+	if newPassword == "" {
+		newPassword = req.PasswordBaru
+	}
+	if oldPassword == "" || newPassword == "" {
+		c.JSON(400, gin.H{"error": "Password lama dan baru wajib diisi"})
+		return
+	}
+
+	if err := security.ValidatePassword(newPassword); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
@@ -155,12 +174,12 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if !security.VerifyPassword(req.PasswordLama, user.Password) {
+	if !security.VerifyPassword(oldPassword, user.Password) {
 		c.JSON(401, gin.H{"error": "Password lama tidak sesuai"})
 		return
 	}
 
-	hashedNew, err := security.HashPassword(req.PasswordBaru)
+	hashedNew, err := security.HashPassword(newPassword)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Gagal memproses password"})
 		return

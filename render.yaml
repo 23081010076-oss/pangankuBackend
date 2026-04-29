@@ -1,0 +1,63 @@
+services:
+  # Backend API
+  - type: web
+    name: panganku-api
+    env: go
+    region: singapore
+    plan: free
+    buildCommand: go build -o server cmd/server/main.go
+    startCommand: ./server
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_PORT
+        value: 8080
+      - key: SEED_DEFAULT_USERS
+        value: false
+      - key: SEED_DUMMY_DATA
+        value: false
+      - key: DB_HOST
+        fromDatabase:
+          name: panganku-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: panganku-db
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: panganku-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: panganku-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: panganku-db
+          property: database
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: 6379
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+databases:
+  # MySQL Database
+  - name: panganku-db
+    databaseName: panganku
+    user: panganku
+    plan: free
+    region: singapore

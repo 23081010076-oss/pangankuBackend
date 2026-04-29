@@ -222,7 +222,7 @@ func (h *LaporanHandler) CreateLaporan(c *gin.Context) {
 			chatIDStr := os.Getenv("TELEGRAM_CHAT_ID")
 			if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil && chatID != 0 {
 				msgText := fmt.Sprintf(
-					"ðŸš¨ <b>LAPORAN DARURAT BARU!</b> ðŸš¨\n\nðŸ“ <b>Kecamatan:</b> %s\nðŸ›‘ <b>Jenis Masalah:</b> %s\nâš ï¸ <b>Prioritas:</b> %d\nðŸ“ <b>Deskripsi:</b> %s",
+					"ðŸš¨ <b>LAPORAN DARURAT BARU!</b> ðŸš¨\n\nðŸ“ <b>Kecamatan:</b> %s\nðŸ›‘ <b>Jenis Masalah<b>Priorita:</b> %s\nâš ï¸ s:</b> %d\nðŸ“ <b>Deskripsi:</b> %s",
 					kecName, lap.JenisMasalah, lap.Prioritas, deskripsi,
 				)
 				h.tg.SendBroadcastMessage(context.Background(), chatID, msgText)

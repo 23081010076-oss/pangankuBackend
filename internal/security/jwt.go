@@ -1,4 +1,4 @@
-﻿// Penjelasan file:
+// Penjelasan file:
 // Lokasi: internal/security/jwt.go
 // Bagian: security
 // File: jwt
@@ -8,6 +8,7 @@ package security
 import (
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -22,6 +23,11 @@ type Claims struct {
 
 // GenerateAccessToken membuat JWT access token
 func GenerateAccessToken(userID, email, role string) (string, error) {
+	secret, err := jwtSecret()
+	if err != nil {
+		return "", err
+	}
+
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
@@ -34,19 +40,23 @@ func GenerateAccessToken(userID, email, role string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := []byte(os.Getenv("JWT_SECRET"))
-	
+
 	return token.SignedString(secret)
 }
 
 // ValidateAccessToken memvalidasi JWT token dan mengembalikan claims
 func ValidateAccessToken(tokenStr string) (*Claims, error) {
+	secret, err := jwtSecret()
+	if err != nil {
+		return nil, err
+	}
+
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Validasi signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("signing method tidak valid")
 		}
-		return []byte(os.Getenv("JWT_SECRET")), nil
+		return secret, nil
 	})
 
 	if err != nil {
@@ -60,3 +70,10 @@ func ValidateAccessToken(tokenStr string) (*Claims, error) {
 	return nil, errors.New("token tidak valid")
 }
 
+func jwtSecret() ([]byte, error) {
+	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	if secret == "" {
+		return nil, errors.New("JWT_SECRET tidak diset")
+	}
+	return []byte(secret), nil
+}

@@ -1,8 +1,9 @@
-// Penjelasan file:
-// Lokasi: internal/models/komoditas.go
-// Bagian: model
-// File: komoditas
-// Fungsi utama: File ini mendefinisikan struktur data atau tabel yang dipakai backend.
+// Doc:
+// Tujuan: Mendefinisikan model master komoditas pangan yang dipakai fitur harga, stok, distribusi, dan admin.
+// Dipakai oleh: Handler komoditas, analytics, seeder, serta relasi model harga/stok/distribusi/luas lahan.
+// Dependensi utama: GORM, UUID, model relasi backend.
+// Fungsi public/utama: Komoditas struct, BeforeCreate.
+// Side effect penting: AutoMigrate membaca field model ini; perubahan field memengaruhi skema tabel komoditas.
 package models
 
 import (
@@ -18,6 +19,7 @@ type Komoditas struct {
 	Nama      string    `gorm:"size:100;not null" json:"nama"`
 	Satuan    string    `gorm:"default:'kg'" json:"satuan"`
 	Kategori  string    `gorm:"size:50" json:"kategori"`
+	GambarURL string    `gorm:"size:255" json:"gambar_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

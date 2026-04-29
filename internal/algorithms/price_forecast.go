@@ -14,6 +14,9 @@ import (
 func MovingAverage(prices []float64, window int) []float64 {
 	n := len(prices)
 	result := make([]float64, n)
+	if window <= 0 {
+		return result
+	}
 	memo := make(map[int]float64) // key=index, value=SMA di titik itu
 
 	var sma func(i int) float64
@@ -42,6 +45,9 @@ func MovingAverage(prices []float64, window int) []float64 {
 // Kompleksitas: Time O(n), Space O(n)
 func PredictNext7Days(prices []float64) []float64 {
 	n := len(prices)
+	if n == 0 {
+		return []float64{}
+	}
 	dp := make([]float64, n+7)
 	copy(dp, prices) // isi data historis
 
@@ -49,10 +55,14 @@ func PredictNext7Days(prices []float64) []float64 {
 	for i := n; i < n+7; i++ {
 		// EMA: alpha * nilai_sebelumnya + (1-alpha) * rata-rata 7 hari
 		sum := 0.0
-		for j := i - 7; j < i; j++ {
+		windowStart := i - 7
+		if windowStart < 0 {
+			windowStart = 0
+		}
+		for j := windowStart; j < i; j++ {
 			sum += dp[j]
 		}
-		avg7 := sum / 7.0
+		avg7 := sum / float64(i-windowStart)
 		dp[i] = alpha*dp[i-1] + (1-alpha)*avg7
 	}
 	return dp[n:] // return 7 prediksi
@@ -81,7 +91,7 @@ func DetectAnomalies(prices []float64) []int {
 	stddev := math.Sqrt(variance / n)
 	
 	// deteksi anomali
-	var anomalies []int
+	anomalies := make([]int, 0)
 	for i, p := range prices {
 		if math.Abs(p-mean) > 2*stddev {
 			anomalies = append(anomalies, i)
@@ -123,9 +133,9 @@ func GetTrend(prices []float64) string {
 	slopePct := (slope / meanPrice) * 100 // persentase per hari
 
 	switch {
-	case slopePct > 2:
+	case slopePct > 1.5:
 		return "NAIK"
-	case slopePct < -2:
+	case slopePct < -1.5:
 		return "TURUN"
 	default:
 		return "STABIL"

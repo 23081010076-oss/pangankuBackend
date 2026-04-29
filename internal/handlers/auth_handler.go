@@ -50,6 +50,65 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+const refreshTokenTTL = 7 * 24 * time.Hour
+
+func refreshKey(userID string) string {
+	return "refresh:" + userID
+}
+
+func refreshValueKey(token string) string {
+	return "refreshval:" + token
+}
+
+func (h *AuthHandler) issueTokens(ctx context.Context, user models.User) (string, string, error) {
+	accessToken, err := security.GenerateAccessToken(user.ID.String(), user.Email, user.Role)
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshToken, err := security.GenerateRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := h.storeRefreshToken(ctx, user.ID.String(), refreshToken); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (h *AuthHandler) storeRefreshToken(ctx context.Context, userID, refreshToken string) error {
+	oldToken, err := h.rdb.Get(ctx, refreshKey(userID)).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+
+	pipe := h.rdb.TxPipeline()
+	if oldToken != "" {
+		pipe.Del(ctx, refreshValueKey(oldToken))
+	}
+	pipe.Set(ctx, refreshKey(userID), refreshToken, refreshTokenTTL)
+	pipe.Set(ctx, refreshValueKey(refreshToken), userID, refreshTokenTTL)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (h *AuthHandler) deleteRefreshToken(ctx context.Context, userID string) error {
+	oldToken, err := h.rdb.Get(ctx, refreshKey(userID)).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+
+	pipe := h.rdb.TxPipeline()
+	if oldToken != "" {
+		pipe.Del(ctx, refreshValueKey(oldToken))
+	}
+	pipe.Del(ctx, refreshKey(userID))
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
 // Register - POST /api/v1/auth/register
 // Handler ini menangani proses pendaftaran user baru.
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -98,14 +157,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Generate tokens
-	accessToken, _ := security.GenerateAccessToken(user.ID.String(), user.Email, user.Role)
-	refreshToken, _ := security.GenerateRefreshToken()
-
-	// Simpan refresh token di Redis (7 hari)
-	ctx := context.Background()
-	h.rdb.Set(ctx, "refresh:"+user.ID.String(), refreshToken, 7*24*time.Hour)
-	h.rdb.Set(ctx, "refreshval:"+refreshToken, user.ID.String(), 7*24*time.Hour)
+	ctx := c.Request.Context()
+	accessToken, refreshToken, err := h.issueTokens(ctx, user)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Gagal membuat sesi login"})
+		return
+	}
 
 	c.JSON(201, gin.H{
 		"user": gin.H{
@@ -128,7 +185,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	attemptsKey := "attempts:" + req.Email
 
 	// Cek jumlah percobaan login gagal
@@ -160,21 +217,20 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Reset attempts jika berhasil
 	h.rdb.Del(ctx, attemptsKey)
 
-	// Generate tokens
-	accessToken, _ := security.GenerateAccessToken(user.ID.String(), user.Email, user.Role)
-	refreshToken, _ := security.GenerateRefreshToken()
-
-	// Simpan refresh token di Redis
-	h.rdb.Set(ctx, "refresh:"+user.ID.String(), refreshToken, 7*24*time.Hour)
-	h.rdb.Set(ctx, "refreshval:"+refreshToken, user.ID.String(), 7*24*time.Hour)
+	accessToken, refreshToken, err := h.issueTokens(ctx, user)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Gagal membuat sesi login"})
+		return
+	}
 
 	// Audit log
+	clientIP := c.ClientIP()
 	go func() {
 		h.db.Create(&models.AuditLog{
 			UserID:    user.ID,
 			Action:    "LOGIN",
 			Resource:  "auth",
-			IPAddress: c.ClientIP(),
+			IPAddress: clientIP,
 		})
 	}()
 
@@ -195,33 +251,49 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// Ambil token dari header
 	authHeader := c.GetHeader("Authorization")
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 {
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || parts[0] != "Bearer" {
 		c.JSON(400, gin.H{"error": "Token tidak valid"})
 		return
 	}
 	token := parts[1]
 
 	// Parse token untuk mendapatkan expiry time
-	claims, _ := security.ValidateAccessToken(token)
+	claims, err := security.ValidateAccessToken(token)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Token tidak valid"})
+		return
+	}
 	ttl := time.Until(claims.ExpiresAt.Time)
 
 	// Tambahkan ke blacklist
-	ctx := context.Background()
-	h.rdb.Set(ctx, "blacklist:"+token, 1, ttl)
+	ctx := c.Request.Context()
+	if ttl > 0 {
+		if err := h.rdb.Set(ctx, "blacklist:"+token, 1, ttl).Err(); err != nil {
+			c.JSON(500, gin.H{"error": "Gagal menonaktifkan token"})
+			return
+		}
+	}
 
 	// Hapus refresh token
 	userID := middleware.GetUserID(c)
-	h.rdb.Del(ctx, "refresh:"+userID)
+	if err := h.deleteRefreshToken(ctx, userID); err != nil {
+		c.JSON(500, gin.H{"error": "Gagal menghapus sesi"})
+		return
+	}
 
 	// Audit log
+	clientIP := c.ClientIP()
+	uid, parseErr := uuid.Parse(userID)
 	go func() {
-		h.db.Create(&models.AuditLog{
-			UserID:    uuid.MustParse(userID),
-			Action:    "LOGOUT",
-			Resource:  "auth",
-			IPAddress: c.ClientIP(),
-		})
+		if parseErr == nil {
+			h.db.Create(&models.AuditLog{
+				UserID:    uid,
+				Action:    "LOGOUT",
+				Resource:  "auth",
+				IPAddress: clientIP,
+			})
+		}
 	}()
 
 	c.JSON(200, gin.H{"message": "Berhasil logout"})
@@ -236,31 +308,34 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
 	// Ambil userID dari refresh token
-	userID, err := h.rdb.Get(ctx, "refreshval:"+req.RefreshToken).Result()
+	userID, err := h.rdb.Get(ctx, refreshValueKey(req.RefreshToken)).Result()
 	if err != nil {
+		c.JSON(401, gin.H{"error": "Refresh token tidak valid"})
+		return
+	}
+
+	currentToken, err := h.rdb.Get(ctx, refreshKey(userID)).Result()
+	if err != nil || currentToken != req.RefreshToken {
+		h.rdb.Del(ctx, refreshValueKey(req.RefreshToken))
 		c.JSON(401, gin.H{"error": "Refresh token tidak valid"})
 		return
 	}
 
 	// Ambil data user
 	var user models.User
-	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
+	if err := h.db.Where("id = ? AND is_active = true", userID).First(&user).Error; err != nil {
 		c.JSON(401, gin.H{"error": "User tidak ditemukan"})
 		return
 	}
 
-	// Generate token baru
-	accessToken, _ := security.GenerateAccessToken(user.ID.String(), user.Email, user.Role)
-	newRefreshToken, _ := security.GenerateRefreshToken()
-
-	// Hapus refresh token lama dan simpan yang baru
-	h.rdb.Del(ctx, "refreshval:"+req.RefreshToken)
-	h.rdb.Del(ctx, "refresh:"+userID)
-	h.rdb.Set(ctx, "refresh:"+userID, newRefreshToken, 7*24*time.Hour)
-	h.rdb.Set(ctx, "refreshval:"+newRefreshToken, userID, 7*24*time.Hour)
+	accessToken, newRefreshToken, err := h.issueTokens(ctx, user)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Gagal memperbarui sesi"})
+		return
+	}
 
 	c.JSON(200, gin.H{
 		"access_token":  accessToken,

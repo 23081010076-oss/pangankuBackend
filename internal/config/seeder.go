@@ -1,19 +1,23 @@
-// Penjelasan file:
-// Lokasi: internal/config/seeder.go
-// Bagian: config
-// File: seeder
-// Fungsi utama: File ini mengatur koneksi, konfigurasi, migrasi, atau seed data backend.
+// Doc:
+// Tujuan: Mengisi data master, akun awal, data demo harga/stok/laporan, dan luas lahan per kecamatan.
+// Dipakai oleh: Bootstrap backend setelah migrasi database.
+// Dependensi utama: Gorm DB, models, security hash password, clause upsert.
+// Fungsi public/utama: SeedData, SeedDummyData, seedLuasLahanData, seedTodayHargaData, ensureSeedUser.
+// Side effect penting: DB read/write seed; upsert luas lahan; insert harga hari ini bila belum tersedia.
 package config
 
 import (
 	"log"
 	"math/rand"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/panganku/backend/internal/models"
 	"github.com/panganku/backend/internal/security"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type seedUserDefinition struct {
@@ -95,36 +99,40 @@ func SeedData(db *gorm.DB) {
 		}
 	}
 
-	seedUsers := []seedUserDefinition{
-		{
-			Name:          "Administrator",
-			Email:         "admin@panganku.id",
-			Phone:         "081234567890",
-			Role:          "admin",
-			PasswordPlain: "Admin123!",
-		},
-		{
-			Name:          "Petugas Dinas Pangan",
-			Email:         "petugas@panganku.id",
-			Phone:         "081234567891",
-			Role:          "petugas",
-			PasswordPlain: "Petugas123!",
-			KecamatanName: "Lamongan",
-		},
-		{
-			Name:          "Petani Binaan",
-			Email:         "petani@panganku.id",
-			Phone:         "081234567892",
-			Role:          "petani",
-			PasswordPlain: "Petani123!",
-			KecamatanName: "Babat",
-		},
-	}
-
-	for _, seedUser := range seedUsers {
-		if err := ensureSeedUser(db, seedUser); err != nil {
-			log.Printf("Failed to seed user %s: %v", seedUser.Email, err)
+	if shouldSeedDefaultUsers() {
+		seedUsers := []seedUserDefinition{
+			{
+				Name:          "Administrator",
+				Email:         "admin@panganku.id",
+				Phone:         "081234567890",
+				Role:          "admin",
+				PasswordPlain: "Admin123!",
+			},
+			{
+				Name:          "Petugas Dinas Pangan",
+				Email:         "petugas@panganku.id",
+				Phone:         "081234567891",
+				Role:          "petugas",
+				PasswordPlain: "Petugas123!",
+				KecamatanName: "Lamongan",
+			},
+			{
+				Name:          "Petani Binaan",
+				Email:         "petani@panganku.id",
+				Phone:         "081234567892",
+				Role:          "petani",
+				PasswordPlain: "Petani123!",
+				KecamatanName: "Babat",
+			},
 		}
+
+		for _, seedUser := range seedUsers {
+			if err := ensureSeedUser(db, seedUser); err != nil {
+				log.Printf("Failed to seed user %s: %v", seedUser.Email, err)
+			}
+		}
+	} else {
+		log.Println("Default user seed skipped")
 	}
 
 	log.Println("Seeding completed successfully")
@@ -135,9 +143,6 @@ func SeedData(db *gorm.DB) {
 func SeedDummyData(db *gorm.DB) {
 	var hargaCount int64
 	db.Model(&models.HargaPasar{}).Count(&hargaCount)
-	if hargaCount > 0 {
-		return
-	}
 
 	log.Println("Seeding dummy harga & stok pangan data...")
 
@@ -155,15 +160,23 @@ func SeedDummyData(db *gorm.DB) {
 	}
 
 	basePrices := map[string]float64{
-		"Beras":         12500,
-		"Jagung":        5500,
-		"Kedelai":       14000,
-		"Cabai Merah":   45000,
-		"Bawang Merah":  28000,
-		"Gula Pasir":    16000,
-		"Minyak Goreng": 15500,
-		"Daging Ayam":   35000,
-		"Telur Ayam":    27000,
+		"Beras":         12800,
+		"Jagung":        6200,
+		"Kedelai":       14200,
+		"Cabai Merah":   46200,
+		"Bawang Merah":  31500,
+		"Gula Pasir":    17400,
+		"Minyak Goreng": 16800,
+		"Daging Ayam":   36500,
+		"Telur Ayam":    28600,
+	}
+
+	seedLuasLahanData(db, komoditasList, kecamatanList, admin.ID)
+
+	if hargaCount > 0 {
+		seedTodayHargaData(db, komoditasList, kecamatanList, basePrices, admin.ID)
+		log.Println("Harga historis sudah tersedia, hanya seed data terbaru & luas lahan yang dipastikan")
+		return
 	}
 
 	dailyDelta := map[string][]float64{
@@ -244,12 +257,99 @@ func SeedDummyData(db *gorm.DB) {
 	log.Println("Dummy data seeding selesai")
 }
 
-func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
-	hashedPassword, err := security.HashPassword(def.PasswordPlain)
-	if err != nil {
-		return err
+func seedLuasLahanData(db *gorm.DB, komoditasList []models.Komoditas, kecamatanList []models.Kecamatan, adminID uuid.UUID) {
+	currentYear := time.Now().Year()
+	commodityWeights := map[string]float64{
+		"Beras":         0.42,
+		"Jagung":        0.18,
+		"Kedelai":       0.08,
+		"Cabai Merah":   0.05,
+		"Bawang Merah":  0.06,
+		"Gula Pasir":    0.04,
+		"Minyak Goreng": 0.00,
+		"Daging Ayam":   0.00,
+		"Telur Ayam":    0.00,
+	}
+	kecamatanFactors := []float64{1.10, 0.96, 0.82, 0.74, 0.88, 0.91, 0.79, 0.85, 0.93}
+
+	rows := make([]models.LuasLahan, 0, len(komoditasList)*len(kecamatanList))
+	for ki, kec := range kecamatanList {
+		factor := kecamatanFactors[ki%len(kecamatanFactors)]
+		for _, kom := range komoditasList {
+			weight := commodityWeights[kom.Nama]
+			luasHa := float64(kec.LuasHa) * weight * factor
+			if luasHa < 0.5 {
+				luasHa = 0
+			}
+			rows = append(rows, models.LuasLahan{
+				KomoditasID: kom.ID,
+				KecamatanID: kec.ID,
+				LuasHa:      luasHa,
+				Tahun:       currentYear,
+				PetugasID:   adminID,
+			})
+		}
 	}
 
+	if len(rows) == 0 {
+		return
+	}
+
+	err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "komoditas_id"},
+			{Name: "kecamatan_id"},
+			{Name: "tahun"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"luas_ha", "petugas_id", "updated_at"}),
+	}).CreateInBatches(rows, 250).Error
+	if err != nil {
+		log.Printf("Failed to seed luas lahan: %v", err)
+		return
+	}
+	log.Printf("Luas lahan seeded/updated untuk %d komoditas dan %d kecamatan", len(komoditasList), len(kecamatanList))
+}
+
+func seedTodayHargaData(db *gorm.DB, komoditasList []models.Komoditas, kecamatanList []models.Kecamatan, basePrices map[string]float64, adminID uuid.UUID) {
+	today := time.Now().Truncate(24 * time.Hour)
+	tomorrow := today.AddDate(0, 0, 1)
+
+	var todayCount int64
+	db.Model(&models.HargaPasar{}).
+		Where("tanggal >= ? AND tanggal < ?", today, tomorrow).
+		Count(&todayCount)
+	if todayCount > 0 {
+		return
+	}
+
+	rng := rand.New(rand.NewSource(int64(today.YearDay() + today.Year())))
+	rows := make([]models.HargaPasar, 0, len(komoditasList)*len(kecamatanList))
+	for ki, kec := range kecamatanList {
+		areaFactor := 1 + (float64((ki%7)-3) * 0.006)
+		for _, kom := range komoditasList {
+			base := basePrices[kom.Nama]
+			if base == 0 {
+				base = 10000
+			}
+			marketNoise := 1 + (rng.Float64()*0.018 - 0.009)
+			rows = append(rows, models.HargaPasar{
+				KomoditasID: kom.ID,
+				KecamatanID: kec.ID,
+				HargaPerKg:  base * areaFactor * marketNoise,
+				Tanggal:     today,
+				CreatedBy:   adminID,
+			})
+		}
+	}
+
+	if err := db.CreateInBatches(rows, 250).Error; err != nil {
+		log.Printf("Failed to seed harga hari ini: %v", err)
+		return
+	}
+	log.Printf("Harga hari ini seeded untuk %d komoditas dan %d kecamatan", len(komoditasList), len(kecamatanList))
+}
+
+func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
 	var kecamatanID *uuid.UUID
 	if def.KecamatanName != "" {
 		var kecamatan models.Kecamatan
@@ -259,13 +359,12 @@ func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
 	}
 
 	var user models.User
-	err = db.Where("email = ?", def.Email).First(&user).Error
+	err := db.Where("email = ?", def.Email).First(&user).Error
 	if err == nil {
 		updates := map[string]interface{}{
 			"name":      def.Name,
 			"phone":     def.Phone,
 			"role":      def.Role,
-			"password":  hashedPassword,
 			"is_active": true,
 		}
 		if kecamatanID != nil {
@@ -278,6 +377,11 @@ func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
 		return nil
 	}
 	if err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	hashedPassword, err := security.HashPassword(def.PasswordPlain)
+	if err != nil {
 		return err
 	}
 
@@ -299,4 +403,12 @@ func ensureSeedUser(db *gorm.DB, def seedUserDefinition) error {
 
 	log.Printf("Seed user created: %s (%s)", def.Email, def.Role)
 	return nil
+}
+
+func shouldSeedDefaultUsers() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_DEFAULT_USERS")))
+	if value == "true" || value == "1" || value == "yes" {
+		return true
+	}
+	return os.Getenv("APP_ENV") != "production"
 }

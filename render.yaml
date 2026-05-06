@@ -1,5 +1,4 @@
 services:
-  # Backend API
   - type: web
     name: panganku-api
     env: go
@@ -11,40 +10,39 @@ services:
     envVars:
       - key: APP_ENV
         value: production
-      - key: APP_PORT
-        value: 8080
       - key: SEED_DEFAULT_USERS
         value: false
       - key: SEED_DUMMY_DATA
         value: false
+
+      # Isi dari TiDB Cloud Starter atau MySQL-compatible database lain.
       - key: DB_HOST
-        fromDatabase:
-          name: panganku-db
-          property: host
+        sync: false
       - key: DB_PORT
-        fromDatabase:
-          name: panganku-db
-          property: port
+        value: 4000
       - key: DB_USER
-        fromDatabase:
-          name: panganku-db
-          property: user
+        sync: false
       - key: DB_PASSWORD
-        fromDatabase:
-          name: panganku-db
-          property: password
+        sync: false
       - key: DB_NAME
-        fromDatabase:
-          name: panganku-db
-          property: database
-      - key: REDIS_HOST
+        value: panganku
+      - key: DB_TLS
+        value: true
+      - key: DB_MAX_IDLE_CONNS
+        value: 5
+      - key: DB_MAX_OPEN_CONNS
+        value: 10
+      - key: DB_CONN_MAX_LIFETIME_MINUTES
+        value: 30
+
+      # Isi dari Upstash Redis. Gunakan URL rediss://...
+      - key: REDIS_URL
         sync: false
-      - key: REDIS_PORT
-        value: 6379
-      - key: REDIS_PASSWORD
-        sync: false
+
+      # Isi setelah URL frontend Flutter Web sudah ada.
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+
       - key: JWT_SECRET
         generateValue: true
       - key: CLOUDINARY_CLOUD_NAME
@@ -53,11 +51,5 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-
-databases:
-  # MySQL Database
-  - name: panganku-db
-    databaseName: panganku
-    user: panganku
-    plan: free
-    region: singapore
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false

@@ -67,6 +67,23 @@ Ini akan menjalankan:
 - MySQL di port 3306
 - Redis di port 6379
 
+## Deploy Gratis
+
+Konfigurasi deploy gratis sudah disiapkan untuk Render + TiDB Cloud + Upstash:
+
+- `render.yaml` untuk Render Blueprint/Web Service.
+- `.env.production.example` untuk daftar environment production.
+- TiDB Cloud gunakan `DB_PORT=4000` dan `DB_TLS=true`.
+- Upstash Redis gunakan `REDIS_URL` yang diawali `rediss://`.
+
+Manual Render config:
+
+```bash
+Build Command: go build -o server cmd/server/main.go
+Start Command: ./server
+Health Check Path: /health
+```
+
 ## API Endpoints
 
 ### Authentication

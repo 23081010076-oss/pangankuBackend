@@ -19,6 +19,8 @@ vendor/
 
 # Environment variables
 .env
+.env.production
+.env*.local
 
 # IDE
 .vscode/

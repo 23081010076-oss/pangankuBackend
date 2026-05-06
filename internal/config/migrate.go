@@ -1,8 +1,9 @@
-// Penjelasan file:
-// Lokasi: internal/config/migrate.go
-// Bagian: config
-// File: migrate
-// Fungsi utama: File ini mengatur koneksi, konfigurasi, migrasi, atau seed data backend.
+// Doc:
+// Tujuan: Menjalankan migrasi tabel utama backend menggunakan koneksi database aktif.
+// Dipakai oleh: Bootstrap aplikasi/server setelah database berhasil terkoneksi.
+// Dependensi utama: GORM dan model domain aplikasi.
+// Fungsi public/utama: RunMigrations.
+// Side effect penting: Membuat atau memperbarui skema tabel pada database MySQL.
 package config
 
 import (
@@ -33,5 +34,5 @@ func AutoMigrate(db *gorm.DB) {
 		log.Fatalf("Migration failed: %v", err)
 	}
 
-	log.Println("âœ“ Migrations completed successfully")
+	log.Println("OK Migrations completed successfully")
 }

@@ -1,8 +1,9 @@
-// Penjelasan file:
-// Lokasi: internal/config/database.go
-// Bagian: config
-// File: database
-// Fungsi utama: File ini mengatur koneksi, konfigurasi, migrasi, atau seed data backend.
+// Doc:
+// Tujuan: Mengatur koneksi database GORM dan konfigurasi connection pool backend.
+// Dipakai oleh: Bootstrap aplikasi/server saat inisialisasi dependency backend.
+// Dependensi utama: GORM MySQL driver, models, konfigurasi environment, dan logger.
+// Fungsi public/utama: ConnectDatabase, GetDB, CloseDatabase.
+// Side effect penting: Membuka koneksi MySQL, auto-migrate model, dan mengatur pool koneksi.
 package config
 
 import (
@@ -44,6 +45,6 @@ func ConnectDB() *gorm.DB {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	log.Println("âœ“ Database terkoneksi")
+	log.Println("OK Database terkoneksi")
 	return db
 }

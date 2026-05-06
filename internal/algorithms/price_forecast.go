@@ -1,4 +1,4 @@
-﻿// Penjelasan file:
+// Penjelasan file:
 // Lokasi: internal/algorithms/price_forecast.go
 // Bagian: algorithm
 // File: price_forecast
@@ -75,21 +75,21 @@ func DetectAnomalies(prices []float64) []int {
 	}
 
 	n := float64(len(prices))
-	
+
 	// hitung mean
 	sum := 0.0
 	for _, p := range prices {
 		sum += p
 	}
 	mean := sum / n
-	
+
 	// hitung standard deviation
 	variance := 0.0
 	for _, p := range prices {
 		variance += (p - mean) * (p - mean)
 	}
 	stddev := math.Sqrt(variance / n)
-	
+
 	// deteksi anomali
 	anomalies := make([]int, 0)
 	for i, p := range prices {
@@ -108,7 +108,7 @@ func GetTrend(prices []float64) string {
 
 	n := float64(len(prices))
 	sumX, sumY, sumXY, sumX2 := 0.0, 0.0, 0.0, 0.0
-	
+
 	for i, p := range prices {
 		x := float64(i)
 		sumX += x
@@ -116,20 +116,20 @@ func GetTrend(prices []float64) string {
 		sumXY += x * p
 		sumX2 += x * x
 	}
-	
+
 	// slope dari least squares
 	denominator := n*sumX2 - sumX*sumX
 	if denominator == 0 {
 		return "STABIL"
 	}
-	
+
 	slope := (n*sumXY - sumX*sumY) / denominator
 	meanPrice := sumY / n
-	
+
 	if meanPrice == 0 {
 		return "STABIL"
 	}
-	
+
 	slopePct := (slope / meanPrice) * 100 // persentase per hari
 
 	switch {
@@ -143,9 +143,16 @@ func GetTrend(prices []float64) string {
 }
 
 type ForecastResult struct {
-	Predictions []float64 `json:"predictions"`
-	Trend       string    `json:"trend"`
-	Anomalies   []int     `json:"anomaly_indexes"`
+	Predictions    []float64       `json:"predictions"`
+	Trend          string          `json:"trend"`
+	Anomalies      []int           `json:"anomaly_indexes"`
+	AnomalyDetails []AnomalyDetail `json:"anomaly_details,omitempty"`
+}
+
+type AnomalyDetail struct {
+	Index      int     `json:"index"`
+	HargaPerKg float64 `json:"harga_per_kg"`
+	Tanggal    string  `json:"tanggal"`
 }
 
 // Forecast melakukan prediksi harga lengkap
@@ -156,4 +163,3 @@ func Forecast(prices []float64) ForecastResult {
 		Anomalies:   DetectAnomalies(prices),
 	}
 }
-

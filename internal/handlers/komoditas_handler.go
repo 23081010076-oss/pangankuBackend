@@ -7,21 +7,25 @@
 package handlers
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/panganku/backend/internal/middleware"
 	"github.com/panganku/backend/internal/models"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 // Struct handler ini menyimpan dependency yang dibutuhkan untuk melayani endpoint fitur ini.
 type KomoditasHandler struct {
-	db *gorm.DB
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
 // Constructor ini membuat instance handler baru beserta dependency yang diperlukan.
-func NewKomoditasHandler(db *gorm.DB) *KomoditasHandler {
-	return &KomoditasHandler{db: db}
+func NewKomoditasHandler(db *gorm.DB, rdb *redis.Client) *KomoditasHandler {
+	return &KomoditasHandler{db: db, rdb: rdb}
 }
 
 // Struct request ini merepresentasikan data input yang diharapkan dari body request.
@@ -92,6 +96,10 @@ func (h *KomoditasHandler) CreateKomoditas(c *gin.Context) {
 		return
 	}
 
+	// Invalidate cache
+	ctx := context.Background()
+	h.rdb.Del(ctx, "harga:latest:agregat", "harga:latest:per_kecamatan")
+
 	go func() {
 		userID := middleware.GetUserID(c)
 		if uid, err := uuid.Parse(userID); err == nil {
@@ -143,6 +151,10 @@ func (h *KomoditasHandler) UpdateKomoditas(c *gin.Context) {
 		return
 	}
 
+	// Invalidate cache
+	ctx := context.Background()
+	h.rdb.Del(ctx, "harga:latest:agregat", "harga:latest:per_kecamatan")
+
 	komoditas.Nama = req.Nama
 	komoditas.Satuan = satuan
 	komoditas.Kategori = req.Kategori
@@ -164,6 +176,10 @@ func (h *KomoditasHandler) DeleteKomoditas(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Gagal menghapus data"})
 		return
 	}
+
+	// Invalidate cache
+	ctx := context.Background()
+	h.rdb.Del(ctx, "harga:latest:agregat", "harga:latest:per_kecamatan")
 
 	c.JSON(200, gin.H{"message": "Komoditas berhasil dihapus"})
 }

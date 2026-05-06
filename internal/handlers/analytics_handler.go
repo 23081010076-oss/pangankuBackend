@@ -7,13 +7,14 @@
 // Dependensi utama: Gin, Gorm DB, models komoditas/harga/stok/laporan/luas lahan/kecamatan.
 // Fungsi public/utama: AnalyticsHandler, NewAnalyticsHandler, GetDashboard, GetStatusPangan, RegisterAnalyticsRoutes.
 // Side effect penting: DB read agregasi dashboard; tidak melakukan DB write.
-// Catatan: Response dashboard membawa gambar_url dan detail luas_lahan_by_kecamatan untuk UI mobile.
+// Catatan: Response dashboard membawa gambar_url, detail luas_lahan_by_kecamatan, dan tren kecamatan untuk UI/mobile PDF.
 package handlers
 
 import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/panganku/backend/internal/geo"
 	"github.com/panganku/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -169,6 +170,15 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		HargaHarian          []float64            `json:"harga_harian"`
 		StokHarian           []float64            `json:"stok_harian"`
 	}
+	type KecamatanTrend struct {
+		ID          string    `json:"id"`
+		Nama        string    `json:"nama"`
+		AvgHarga    float64   `json:"avg_harga"`
+		TotalStok   float64   `json:"total_stok"`
+		LuasLahan   float64   `json:"luas_lahan"`
+		HargaHarian []float64 `json:"harga_harian"`
+		StokHarian  []float64 `json:"stok_harian"`
+	}
 	var trenKomoditas []KomoditasTrend
 
 	var luasRows []struct {
@@ -186,6 +196,7 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 
 	luasByKomoditas := make(map[string][]luasLahanKecamatan)
 	luasTotalByKomoditas := make(map[string]float64)
+	luasTotalByKecamatan := make(map[string]float64)
 	for _, row := range luasRows {
 		luasByKomoditas[row.KomoditasID] = append(luasByKomoditas[row.KomoditasID], luasLahanKecamatan{
 			KecamatanID:   row.KecamatanID,
@@ -193,6 +204,7 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 			LuasHa:        row.LuasHa,
 		})
 		luasTotalByKomoditas[row.KomoditasID] += row.LuasHa
+		luasTotalByKecamatan[row.KecamatanID] += row.LuasHa
 	}
 
 	// Loop semua komoditas lalu hitung rata-rata, harga harian, stok, dan luas lahannya.
@@ -270,6 +282,89 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		})
 	}
 
+	type dailyKecamatanPrice struct {
+		KecamatanID string  `gorm:"column:kecamatan_id"`
+		Tanggal     string  `gorm:"column:tanggal"`
+		Avg         float64 `gorm:"column:avg"`
+	}
+	var dailyKecamatanPrices []dailyKecamatanPrice
+	h.db.Raw(`
+		SELECT h.kecamatan_id,
+		       DATE_FORMAT(h.tanggal, '%Y-%m-%d') AS tanggal,
+		       COALESCE(AVG(h.harga_per_kg), 0) AS avg
+		FROM harga_pasars h
+		WHERE h.tanggal >= ?
+		  AND h.tanggal <= ?
+		GROUP BY h.kecamatan_id, tanggal
+		ORDER BY h.kecamatan_id ASC, tanggal ASC`,
+		rangeStart, latestHargaDate,
+	).Scan(&dailyKecamatanPrices)
+
+	type kecamatanStokResult struct {
+		KecamatanID string  `gorm:"column:kecamatan_id"`
+		TotalStok   float64 `gorm:"column:total_stok"`
+	}
+	var kecamatanStokRows []kecamatanStokResult
+	h.db.Raw(`
+		SELECT kecamatan_id, COALESCE(SUM(stok_kg), 0) AS total_stok
+		FROM stok_pangans
+		GROUP BY kecamatan_id`,
+	).Scan(&kecamatanStokRows)
+
+	kecamatanPriceByDate := make(map[string]map[string]float64)
+	for _, row := range dailyKecamatanPrices {
+		if kecamatanPriceByDate[row.KecamatanID] == nil {
+			kecamatanPriceByDate[row.KecamatanID] = make(map[string]float64)
+		}
+		kecamatanPriceByDate[row.KecamatanID][row.Tanggal] = row.Avg
+	}
+
+	stokByKecamatan := make(map[string]float64)
+	for _, row := range kecamatanStokRows {
+		stokByKecamatan[row.KecamatanID] = row.TotalStok
+	}
+
+	trenKecamatan := make([]KecamatanTrend, 0, len(allKecamatan))
+	for _, kec := range allKecamatan {
+		kecID := kec.ID.String()
+		hargaMap := kecamatanPriceByDate[kecID]
+		hargaHarian := make([]float64, days)
+		lastHarga := 0.0
+		sumHarga := 0.0
+		hargaCount := 0
+		for i := 0; i < days; i++ {
+			d := rangeStart.AddDate(0, 0, i).Format("2006-01-02")
+			if v, ok := hargaMap[d]; ok {
+				lastHarga = v
+				sumHarga += v
+				hargaCount++
+			}
+			hargaHarian[i] = lastHarga
+		}
+
+		totalStok := stokByKecamatan[kecID]
+		stokHarian := make([]float64, days)
+		currStok := totalStok
+		for i := days - 1; i >= 0; i-- {
+			stokHarian[i] = currStok
+			currStok *= 0.97
+		}
+
+		avgHarga := 0.0
+		if hargaCount > 0 {
+			avgHarga = sumHarga / float64(hargaCount)
+		}
+		trenKecamatan = append(trenKecamatan, KecamatanTrend{
+			ID:          kecID,
+			Nama:        kec.Nama,
+			AvgHarga:    avgHarga,
+			TotalStok:   totalStok,
+			LuasLahan:   luasTotalByKecamatan[kecID],
+			HargaHarian: hargaHarian,
+			StokHarian:  stokHarian,
+		})
+	}
+
 	tanggalLabels := make([]string, days)
 	for i := 0; i < days; i++ {
 		tanggalLabels[i] = rangeStart.AddDate(0, 0, i).Format("02/01")
@@ -304,6 +399,7 @@ func (h *AnalyticsHandler) GetDashboard(c *gin.Context) {
 		"list_kecamatan_kritis":  listKecamatanKritis,
 
 		"komoditas_trend":   trenKomoditas,
+		"kecamatan_trend":   trenKecamatan,
 		"distribusi_aktif":  distribusiAktif,
 		"laporan_bulan_ini": laporanBulanIni,
 		"active_alerts":     activeAlerts,
@@ -403,11 +499,17 @@ func (h *AnalyticsHandler) GetStatusPangan(c *gin.Context) {
 			Where("kecamatan_id = ? AND status IN ?", kec.ID, []string{"baru", "proses"}).
 			Count(&jumlahLaporan)
 
+		lat, lng := kec.Lat, kec.Lng
+		if coord, ok := geo.LamonganCoordinateForKecamatan(kec.Nama); ok {
+			lat = coord.Lat
+			lng = coord.Lng
+		}
+
 		result = append(result, StatusPangan{
 			KecamatanID:   kec.ID.String(),
 			KecamatanNama: kec.Nama,
-			Lat:           kec.Lat,
-			Lng:           kec.Lng,
+			Lat:           lat,
+			Lng:           lng,
 			StatusStok:    statusStok,
 			StokPersen:    stokPersen,
 			HargaTrend:    hargaTrend,

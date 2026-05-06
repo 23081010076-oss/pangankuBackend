@@ -92,6 +92,7 @@ func (h *HargaHandler) invalidateHargaCache(ctx context.Context, komoditasID str
 	}
 	h.deleteCachePattern(ctx, fmt.Sprintf("harga:trend:%s:*", komoditasID))
 	h.deleteCachePattern(ctx, fmt.Sprintf("forecast:%s:*", komoditasID))
+	h.deleteCachePattern(ctx, fmt.Sprintf("forecast:v2:%s:*", komoditasID))
 }
 
 func (h *HargaHandler) deleteCachePattern(ctx context.Context, pattern string) {
@@ -201,7 +202,7 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			FROM (
 				SELECT hp.*,
 					ROW_NUMBER() OVER (
-						PARTITION BY hp.komoditas_id
+						PARTITION BY hp.komoditas_id, hp.kecamatan_id
 						ORDER BY hp.tanggal DESC, hp.created_at DESC, hp.id DESC
 					) AS rn
 				FROM harga_pasars hp
@@ -209,7 +210,7 @@ func (h *HargaHandler) GetLatest(c *gin.Context) {
 			JOIN komoditas k ON k.id = h.komoditas_id
 			JOIN kecamatans kc ON kc.id = h.kecamatan_id
 			WHERE h.rn = 1
-			ORDER BY k.nama ASC
+			ORDER BY k.nama ASC, kc.nama ASC
 		`).Scan(&rows).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Gagal mengambil harga terbaru"})
 			return
@@ -591,7 +592,7 @@ func (h *HargaHandler) GetForecast(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	cacheKey := fmt.Sprintf("forecast:%s:%s", komoditasID, kecamatanID)
+	cacheKey := fmt.Sprintf("forecast:v2:%s:%s", komoditasID, kecamatanID)
 
 	// Cek cache
 	cached, err := h.rdb.Get(ctx, cacheKey).Result()
@@ -627,6 +628,16 @@ func (h *HargaHandler) GetForecast(c *gin.Context) {
 
 	// Jalankan forecast
 	result := algorithms.Forecast(prices)
+	for _, idx := range result.Anomalies {
+		if idx < 0 || idx >= len(hargaList) {
+			continue
+		}
+		result.AnomalyDetails = append(result.AnomalyDetails, algorithms.AnomalyDetail{
+			Index:      idx,
+			HargaPerKg: hargaList[idx].HargaPerKg,
+			Tanggal:    hargaList[idx].Tanggal.Format("2006-01-02"),
+		})
+	}
 
 	// Cache selama 6 jam
 	if data, err := json.Marshal(result); err == nil {

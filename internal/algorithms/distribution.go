@@ -1,4 +1,4 @@
-﻿// Penjelasan file:
+// Penjelasan file:
 // Lokasi: internal/algorithms/distribution.go
 // Bagian: algorithm
 // File: distribution
@@ -18,7 +18,7 @@ func HaversineDistance(lat1, lng1, lat2, lng2 float64) float64 {
 	dLng := (lng2 - lng1) * math.Pi / 180
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
 		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
-		math.Sin(dLng/2)*math.Sin(dLng/2)
+			math.Sin(dLng/2)*math.Sin(dLng/2)
 	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
@@ -78,11 +78,23 @@ func (pq *PriorityQueue) Pop() interface{} {
 // Kompleksitas: O((V+E) log V) dengan priority queue
 func Dijkstra(nodes []KecamatanNode, startID, endID string) ([]string, float64) {
 	n := len(nodes)
-	
+	if n == 0 {
+		return []string{}, math.Inf(1)
+	}
+
 	// Build index map
 	idToIdx := make(map[string]int)
 	for i, node := range nodes {
 		idToIdx[node.ID] = i
+	}
+
+	start, ok := idToIdx[startID]
+	if !ok {
+		return []string{}, math.Inf(1)
+	}
+	end, ok := idToIdx[endID]
+	if !ok {
+		return []string{}, math.Inf(1)
 	}
 
 	// Build adjacency list
@@ -105,7 +117,6 @@ func Dijkstra(nodes []KecamatanNode, startID, endID string) ([]string, float64) 
 		prev[i] = -1
 	}
 
-	start := idToIdx[startID]
 	dist[start] = 0
 
 	// Dijkstra algorithm
@@ -114,7 +125,7 @@ func Dijkstra(nodes []KecamatanNode, startID, endID string) ([]string, float64) 
 
 	for pq.Len() > 0 {
 		curr := heap.Pop(pq).(*PQItem)
-		
+
 		if curr.dist > dist[curr.node] {
 			continue
 		}
@@ -129,7 +140,6 @@ func Dijkstra(nodes []KecamatanNode, startID, endID string) ([]string, float64) 
 	}
 
 	// Rekonstruksi path
-	end := idToIdx[endID]
 	path := []string{}
 	for at := end; at != -1; at = prev[at] {
 		path = append([]string{nodes[at].ID}, path...)
@@ -140,6 +150,7 @@ func Dijkstra(nodes []KecamatanNode, startID, endID string) ([]string, float64) 
 
 // StokInfo informasi stok kecamatan
 type StokInfo struct {
+	KomoditasID string
 	KecamatanID string
 	Lat         float64
 	Lng         float64
@@ -149,18 +160,19 @@ type StokInfo struct {
 
 // Alokasi hasil alokasi distribusi
 type Alokasi struct {
-	DariID   string    `json:"dari_id"`
-	KeID     string    `json:"ke_id"`
-	JumlahKg float64   `json:"jumlah_kg"`
-	JarakKm  float64   `json:"jarak_km"`
-	Rute     []string  `json:"rute"`
+	KomoditasID string   `json:"komoditas_id,omitempty"`
+	DariID      string   `json:"dari_id"`
+	KeID        string   `json:"ke_id"`
+	JumlahKg    float64  `json:"jumlah_kg"`
+	JarakKm     float64  `json:"jarak_km"`
+	Rute        []string `json:"rute"`
 }
 
 // GreedyAllocate alokasi stok dari kecamatan surplus ke kecamatan defisit
-// Kompleksitas: O(nÂ² log n)
+// Kompleksitas: O(n^2 log n)
 func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 	var surplus, defisit []StokInfo
-	
+
 	// Klasifikasi surplus dan defisit
 	for _, s := range stokList {
 		if s.KapasitasKg == 0 {
@@ -206,10 +218,15 @@ func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 		})
 
 		for j := range surplus {
+			if defisit[i].KomoditasID != "" &&
+				surplus[j].KomoditasID != "" &&
+				surplus[j].KomoditasID != defisit[i].KomoditasID {
+				continue
+			}
 			if surplus[j].KapasitasKg == 0 {
 				continue
 			}
-			
+
 			batasBawah := surplus[j].KapasitasKg * 0.7
 			if surplus[j].StokKg <= batasBawah {
 				continue
@@ -217,25 +234,26 @@ func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 
 			tersedia := surplus[j].StokKg - batasBawah
 			kirim := math.Min(kebutuhan, tersedia)
-			
+
 			jarak := HaversineDistance(
 				defisit[i].Lat, defisit[i].Lng,
 				surplus[j].Lat, surplus[j].Lng,
 			)
-			
+
 			rute, _ := Dijkstra(nodes, surplus[j].KecamatanID, defisit[i].KecamatanID)
-			
+
 			hasil = append(hasil, Alokasi{
-				DariID:   surplus[j].KecamatanID,
-				KeID:     defisit[i].KecamatanID,
-				JumlahKg: kirim,
-				JarakKm:  jarak,
-				Rute:     rute,
+				KomoditasID: defisit[i].KomoditasID,
+				DariID:      surplus[j].KecamatanID,
+				KeID:        defisit[i].KecamatanID,
+				JumlahKg:    kirim,
+				JarakKm:     jarak,
+				Rute:        rute,
 			})
-			
+
 			surplus[j].StokKg -= kirim
 			kebutuhan -= kirim
-			
+
 			if kebutuhan <= 0 {
 				break
 			}
@@ -244,4 +262,3 @@ func GreedyAllocate(stokList []StokInfo, nodes []KecamatanNode) []Alokasi {
 
 	return hasil
 }
-

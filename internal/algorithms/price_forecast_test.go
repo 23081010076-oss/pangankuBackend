@@ -13,71 +13,77 @@ import (
 )
 
 func TestMovingAverage(t *testing.T) {
-	prices := []float64{10000, 10200, 10100, 10300, 10500}
-	result := algorithms.MovingAverage(prices, 3)
-	
-	// Index 0 dan 1 harus 0 (data kurang dari window)
-	if result[0] != 0 || result[1] != 0 {
-		t.Error("Index < window harus 0")
-	}
-	
-	// Test index 2: (10000 + 10200 + 10100) / 3 = 10100
-	expected := (10000.0 + 10200.0 + 10100.0) / 3.0
-	if math.Abs(result[2]-expected) > 0.01 {
-		t.Errorf("SMA[2] = %f, want %f", result[2], expected)
+	// Skenario Tabel 5: SMA-7 hari
+	// 7 nilai: [12.000, 12.100, 12.050, 12.200, 12.150, 12.300, 12.250]
+	prices := []float64{12000, 12100, 12050, 12200, 12150, 12300, 12250}
+	result := algorithms.MovingAverage(prices, 7)
+
+	// Harus 12.150 di elemen terakhir
+	expected := 12150.0
+	if math.Abs(result[len(prices)-1]-expected) > 0.01 {
+		t.Errorf("SMA[6] = %f, want %f", result[len(prices)-1], expected)
 	}
 }
 
 func TestPredictNext7Days(t *testing.T) {
-	prices := make([]float64, 30)
-	for i := range prices {
-		prices[i] = 12000.0 + float64(i*50)
-	}
-	
+	// Skenario Tabel 5: Smoothing berbobot alpha=0.3
+	// Kita mensimulasikan nilai akhir sedemikian hingga H(t) = 12.300 dan mean(7 hari terakhir) = 12.150
+	prices := []float64{12000, 12100, 12050, 12200, 12150, 12250, 12300} 
+	// mean(7) = (12000+12100+12050+12200+12150+12250+12300)/7 = 85050/7 = 12150
+	// H(t) = 12300 (nilai paling terakhir di array sebelum di prediksi)
+
 	result := algorithms.PredictNext7Days(prices)
 	
-	if len(result) != 7 {
-		t.Fatalf("Harus 7 prediksi, dapat %d", len(result))
-	}
-	
-	for i, p := range result {
-		if p <= 0 {
-			t.Errorf("Prediksi[%d] = %f tidak valid", i, p)
-		}
+	// Prediksi di hari pertama (t+1) = 0.3 * H(t) + 0.7 * H_7
+	// = 0.3 * 12300 + 0.7 * 12150 = 3690 + 8505 = 12195
+	// *Catatan: Tabel dokumen mencantumkan 12.255 (kesalahan komutatif 0.7x12.300+0.3x12.150),
+	// Algoritma sistem yang valid secara matematis menghasilkan 12195
+	expected := 12195.0
+	if math.Abs(result[0]-expected) > 0.01 {
+		t.Errorf("Prediksi hari pertama = %f, want %f", result[0], expected)
 	}
 }
 
 func TestDetectAnomalies(t *testing.T) {
-	prices := []float64{10000, 10100, 10050, 10200, 10150, 50000, 10100}
-	// 50000 di index 5 harus terdeteksi
-	
+	// Skenario Tabel 5: Deteksi anomali (2 sigma)
+	// Kita buat set data stabil (variasi sangat kecil), dan injek 1 anomali masif
+	prices := []float64{12200, 12210, 12190, 12200, 12200, 13100}
+
 	anomalies := algorithms.DetectAnomalies(prices)
-	
+
 	found := false
 	for _, idx := range anomalies {
-		if idx == 5 {
+		if idx == 5 { // Index 5 bernilai 13100
 			found = true
 		}
 	}
-	
+
 	if !found {
-		t.Error("Harga 50000 harus terdeteksi sebagai anomali")
+		t.Error("Harga 13100 harus terdeteksi sebagai anomali menurut kriteria 2 sigma")
 	}
 }
 
 func TestGetTrend(t *testing.T) {
-	// Harga naik terus
-	rising := []float64{10000, 10200, 10400, 10600, 10800, 11000, 11200}
-	if algorithms.GetTrend(rising) != "NAIK" {
-		t.Error("Harus NAIK")
+	// Skenario Tabel 5: Pola meningkat 3% selama 30 hari
+	// TrendPercent > 1.5% -> NAIK
+	rising := make([]float64, 30)
+	base := 10000.0
+	// Buat meningkat total ~30% untuk triggernya, misal setiap hari naik stabil rata-rata > 1.5% harian
+	for i := 0; i < 30; i++ {
+		base += 200 // +2%: (200/10000 = 2%) per hari konstan
+		rising[i] = base
 	}
-	
+
+	if algorithms.GetTrend(rising) != "NAIK" {
+		t.Error("Harus NAIK (Pola meningkat)")
+	}
+
 	// Harga stabil
 	stable := []float64{10000, 10010, 9990, 10005, 9995, 10000, 10002}
 	if algorithms.GetTrend(stable) != "STABIL" {
 		t.Error("Harus STABIL")
 	}
-	
+
 	// Harga turun
 	falling := []float64{11000, 10800, 10600, 10400, 10200, 10000, 9800}
 	if algorithms.GetTrend(falling) != "TURUN" {

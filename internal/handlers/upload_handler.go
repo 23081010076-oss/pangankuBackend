@@ -1,8 +1,9 @@
-// Penjelasan file:
-// Lokasi: internal/handlers/upload_handler.go
-// Bagian: handler
-// File: upload_handler
-// Fungsi utama: File ini menangani request HTTP, membaca input, dan mengirim response API.
+// Doc:
+// Tujuan: Menangani upload foto multipart untuk gambar komoditas/profil dan mengirim URL file.
+// Dipakai oleh: Upload route `/api/v1/upload/foto`, admin komoditas mobile, dan Postman upload.
+// Dependensi utama: Gin, uuid, filesystem uploads, net/http content type detection.
+// Fungsi public/utama: NewUploadHandler, UploadFoto, RegisterRoutes.
+// Side effect penting: File I/O membuat folder uploads dan menyimpan file gambar.
 package handlers
 
 import (
@@ -34,6 +35,9 @@ func (h *UploadHandler) UploadFoto(c *gin.Context) {
 	}
 
 	file, header, err := c.Request.FormFile("foto")
+	if err != nil {
+		file, header, err = c.Request.FormFile("file")
+	}
 	if err != nil {
 		c.JSON(400, gin.H{"error": "File tidak ditemukan"})
 		return

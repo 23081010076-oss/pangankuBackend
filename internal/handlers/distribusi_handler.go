@@ -43,6 +43,23 @@ type UpdateDistribusiStatusRequest struct {
 	Status string `json:"status" binding:"required,oneof=terjadwal dijadwalkan proses selesai batal dibatalkan"`
 }
 
+type distribusiRuteStep struct {
+	KecamatanID   string `json:"kecamatan_id"`
+	KecamatanNama string `json:"kecamatan_nama"`
+}
+
+type rekomendasiDistribusiResponse struct {
+	KomoditasID       string               `json:"komoditas_id"`
+	KomoditasNama     string               `json:"komoditas_nama"`
+	DariKecamatanID   string               `json:"dari_kecamatan_id"`
+	DariKecamatanNama string               `json:"dari_kecamatan_nama"`
+	KeKecamatanID     string               `json:"ke_kecamatan_id"`
+	KeKecamatanNama   string               `json:"ke_kecamatan_nama"`
+	JumlahKg          float64              `json:"jumlah_kg"`
+	JarakKm           float64              `json:"jarak_km"`
+	Rute              []distribusiRuteStep `json:"rute"`
+}
+
 // GetDistribusi - GET /api/v1/distribusi
 // Handler ini mengambil data dari backend lalu mengirimkannya sebagai response JSON.
 func (h *DistribusiHandler) GetDistribusi(c *gin.Context) {
@@ -81,6 +98,104 @@ func (h *DistribusiHandler) GetDistribusi(c *gin.Context) {
 		"total": total,
 		"page":  page,
 		"limit": limit,
+	})
+}
+
+// GetRekomendasiDistribusi - GET /api/v1/distribusi/rekomendasi
+// Endpoint ini mengaktifkan GreedyAllocate untuk rekomendasi alokasi surplus-defisit.
+func (h *DistribusiHandler) GetRekomendasiDistribusi(c *gin.Context) {
+	komoditasID := c.Query("komoditas_id")
+	if komoditasID != "" {
+		if _, err := uuid.Parse(komoditasID); err != nil {
+			c.JSON(400, gin.H{"error": "Format komoditas_id tidak valid"})
+			return
+		}
+	}
+
+	var stokList []models.StokPangan
+	query := h.db.Model(&models.StokPangan{}).
+		Preload("Kecamatan").
+		Preload("Komoditas")
+	if komoditasID != "" {
+		query = query.Where("komoditas_id = ?", komoditasID)
+	}
+	if err := query.Find(&stokList).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mengambil data stok"})
+		return
+	}
+
+	var kecamatanList []models.Kecamatan
+	if err := h.db.Find(&kecamatanList).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mengambil data kecamatan"})
+		return
+	}
+
+	nodes := make([]algorithms.KecamatanNode, 0, len(kecamatanList))
+	kecamatanMap := make(map[string]models.Kecamatan, len(kecamatanList))
+	for _, k := range kecamatanList {
+		id := k.ID.String()
+		kecamatanMap[id] = k
+		nodes = append(nodes, algorithms.KecamatanNode{
+			ID:  id,
+			Lat: k.Lat,
+			Lng: k.Lng,
+		})
+	}
+
+	komoditasMap := make(map[string]string)
+	stokInfos := make([]algorithms.StokInfo, 0, len(stokList))
+	for _, s := range stokList {
+		kecamatanID := s.KecamatanID.String()
+		komID := s.KomoditasID.String()
+		komoditasMap[komID] = s.Komoditas.Nama
+
+		lat, lng := s.Kecamatan.Lat, s.Kecamatan.Lng
+		if lat == 0 && lng == 0 {
+			if k, ok := kecamatanMap[kecamatanID]; ok {
+				lat, lng = k.Lat, k.Lng
+			}
+		}
+
+		stokInfos = append(stokInfos, algorithms.StokInfo{
+			KomoditasID: komID,
+			KecamatanID: kecamatanID,
+			Lat:         lat,
+			Lng:         lng,
+			StokKg:      s.StokKg,
+			KapasitasKg: s.KapasitasKg,
+		})
+	}
+
+	alokasi := algorithms.GreedyAllocate(stokInfos, nodes)
+	result := make([]rekomendasiDistribusiResponse, 0, len(alokasi))
+	for _, a := range alokasi {
+		rute := make([]distribusiRuteStep, 0, len(a.Rute))
+		for _, kid := range a.Rute {
+			rute = append(rute, distribusiRuteStep{
+				KecamatanID:   kid,
+				KecamatanNama: kecamatanMap[kid].Nama,
+			})
+		}
+
+		result = append(result, rekomendasiDistribusiResponse{
+			KomoditasID:       a.KomoditasID,
+			KomoditasNama:     komoditasMap[a.KomoditasID],
+			DariKecamatanID:   a.DariID,
+			DariKecamatanNama: kecamatanMap[a.DariID].Nama,
+			KeKecamatanID:     a.KeID,
+			KeKecamatanNama:   kecamatanMap[a.KeID].Nama,
+			JumlahKg:          a.JumlahKg,
+			JarakKm:           a.JarakKm,
+			Rute:              rute,
+		})
+	}
+
+	c.JSON(200, gin.H{
+		"data":              result,
+		"total":             len(result),
+		"generated_at":      time.Now(),
+		"surplus_threshold": 70,
+		"defisit_threshold": 30,
 	})
 }
 
@@ -235,13 +350,9 @@ func (h *DistribusiHandler) GetRute(c *gin.Context) {
 		kecamatanMap[k.ID.String()] = k.Nama
 	}
 
-	type RuteStep struct {
-		KecamatanID   string `json:"kecamatan_id"`
-		KecamatanNama string `json:"kecamatan_nama"`
-	}
-	var ruteDetail []RuteStep
+	var ruteDetail []distribusiRuteStep
 	for _, kid := range rute {
-		ruteDetail = append(ruteDetail, RuteStep{
+		ruteDetail = append(ruteDetail, distribusiRuteStep{
 			KecamatanID:   kid,
 			KecamatanNama: kecamatanMap[kid],
 		})
@@ -273,6 +384,7 @@ func (h *DistribusiHandler) DeleteDistribusi(c *gin.Context) {
 // Handler ini menangani proses pendaftaran user baru.
 func (h *DistribusiHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/distribusi", h.GetDistribusi)
+	r.GET("/distribusi/rekomendasi", h.GetRekomendasiDistribusi)
 	r.GET("/distribusi/:id", h.GetDistribusiByID)
 	r.GET("/distribusi/:id/rute", h.GetRute)
 }

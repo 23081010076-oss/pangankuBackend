@@ -45,6 +45,9 @@ services:
 
       - key: JWT_SECRET
         generateValue: true
+      # Generate sendiri: 64 karakter hex untuk AES-256.
+      - key: AES_KEY
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -52,4 +55,6 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
         sync: false
